@@ -10,3 +10,4 @@ vitest.config.mts
 DESIGN.md
 **/*.map
 scripts/**
+.tmp/**
