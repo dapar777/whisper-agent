@@ -54,6 +54,19 @@ export class Transcript {
     return out;
   }
 
+  /** Dřívější rozhodnutí o návrzích (z událostí "kind: title → approved/rejected"). */
+  static suggestionHistory(events: TranscriptEvent[]): { approved: string[]; rejected: string[] } {
+    const approved: string[] = [];
+    const rejected: string[] = [];
+    for (const e of events) {
+      if (e.kind !== "suggestion" || !e.text) continue;
+      const m = e.text.match(/^(.*) → (approved|rejected)$/);
+      if (!m) continue;
+      (m[2] === "approved" ? approved : rejected).push(m[1].trim());
+    }
+    return { approved: [...new Set(approved)], rejected: [...new Set(rejected)].filter((r) => !approved.includes(r)) };
+  }
+
   /** Zhuštěný textový přehled průběhu pro prompt s návrhy (poslední `maxChars`). */
   static summarize(events: TranscriptEvent[], maxChars = 20000): string {
     const lines: string[] = [];

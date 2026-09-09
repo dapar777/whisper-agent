@@ -60,6 +60,10 @@ export interface Suggestion {
   title: string;
   body: string;
   turn: number;
+  /** úprava existující položky místo nové: název skillu, "rule N" nebo match hooku */
+  update?: string;
+  /** automaticky odhalený duplikát něčeho, co už existuje */
+  duplicate?: boolean;
   decision?: "approved" | "rejected";
 }
 

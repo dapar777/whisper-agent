@@ -453,7 +453,9 @@ export class SidebarView implements vscode.WebviewViewProvider {
         const d = it.data || {};
         const live = s && s.suggestions ? s.suggestions.find((x) => x.id === d.id) : null;
         const decision = (live && live.decision) || d.decision;
-        return '<div class="line">💡 návrh <span class="badge">' + esc(d.kind) + "</span> " + esc(d.title) + (decision ? ' <span class="badge">' + (decision === "approved" ? "přijato" : "zamítnuto") + "</span>" : " · čeká v sekci Návrhy") + "</div>";
+        const dup = (live && live.duplicate) || d.duplicate;
+        return '<div class="line">💡 návrh <span class="badge">' + esc(d.kind) + "</span> " + (d.update ? '<span class="badge" title="úprava existující položky">upravuje ' + esc(d.update) + "</span> " : "") + esc(d.title) +
+          (dup ? ' <span class="badge" title="stejná věc už existuje, návrh se přeskočil">duplikát</span>' : decision ? ' <span class="badge">' + (decision === "approved" ? "přijato" : "zamítnuto") + "</span>" : " · čeká v sekci Návrhy") + "</div>";
       }
       default: return "";
     }
@@ -553,7 +555,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
       const items = pending.filter((x) => (x.scope || "project") === scope);
       if (!items.length) return "";
       return '<div class="sub" style="margin-top:6px"><b>' + label + "</b></div>" + items.map((x) =>
-        '<details class="sugItem"><summary><span class="badge">' + esc(x.kind) + "</span> " + esc(x.title) +
+        '<details class="sugItem"><summary><span class="badge">' + esc(x.kind) + "</span> " + (x.update ? '<span class="badge" title="úprava existující položky">upravuje ' + esc(x.update) + "</span> " : "") + esc(x.title) +
         '<span class="btns" style="margin:0 0 0 auto"><button class="small primary" data-sug="' + esc(x.id) + '" data-ok="1" title="Přijmout">✓</button><button class="small" data-sug="' + esc(x.id) + '" data-ok="0" title="Zamítnout">✗</button></span></summary><pre>' + esc(x.body) + "</pre></details>").join("");
     }).join("");
     for (const b of list.querySelectorAll("[data-sug]")) b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); send("suggestion", { id: b.dataset.sug, approve: b.dataset.ok === "1" }); };

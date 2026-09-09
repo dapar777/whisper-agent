@@ -160,6 +160,7 @@ export const TOOLS: ToolDef[] = [
       { name: "kind", required: true, doc: "skill | whisper | rule | hook | allow | setting | task | agent" },
       { name: "scope", required: false, doc: "project (default) = this workspace only; global = the agent's behaviour in every project" },
       { name: "title", required: true, doc: "short title shown to the user" },
+      { name: "update", required: false, doc: 'modify an existing item instead of adding one: skill name, "rule N" (from Additional rules) or a hook match glob; the body is the complete replacement' },
     ],
     bodyDoc:
       "skill: markdown instructions reusable via /name (start with a `# name` line); whisper: lines for the instructions file (WHISPER.md, or the global one); rule: one concise rule for how the agent should work (added to the preamble rules); hook: JSON {\"match\": glob, \"run\": command, \"cwd\"?: dir} run automatically after matching files change; allow: a regular expression for commands that may run without confirmation; setting: JSON {\"key\": \"whisper.…\", \"value\": …}; task: a follow-up task for the plan; agent: feedback for the agent's developer (protocol, tools, prompts) that cannot be applied automatically",

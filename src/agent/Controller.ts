@@ -1,7 +1,18 @@
+import * as fs from "fs";
 import * as vscode from "vscode";
 import { ClipboardBridge } from "../clipboard/ClipboardBridge";
-import { addGlobalHook, appendAgentFeedback, appendGlobalInstructions, appendGlobalRule } from "../global/GlobalConfig";
-import { addHook } from "../hooks/Hooks";
+import {
+  addGlobalHook,
+  appendAgentFeedback,
+  appendGlobalInstructions,
+  appendGlobalRule,
+  readGlobalHooks,
+  readGlobalInstructions,
+  readGlobalRules,
+  replaceGlobalHook,
+  replaceGlobalRule,
+} from "../global/GlobalConfig";
+import { addHook, loadHooks } from "../hooks/Hooks";
 import { VsCodeHost } from "../host/VsCodeHost";
 import { ProjectContext } from "../protocol/PromptBuilder";
 import { isOwnPrompt, looksLikeReply } from "../protocol/replyDetect";
@@ -175,7 +186,8 @@ export class Controller implements vscode.Disposable {
     this.pushItem({ kind: "task", text: "/suggest – návrhy z průběhu práce" });
     const summary = Transcript.summarize(events);
     const ctx = await engine.gatherContext(undefined, this.skills.map((k) => ({ name: k.name, description: k.description })));
-    const prompt = engine.suggestPrompt(s, summary, ctx);
+    ctx.existing = { ...ctx.existing, skillBodies: this.skills.slice(0, 12).map((k) => ({ name: k.name, body: k.body ?? "" })) };
+    const prompt = engine.suggestPrompt(s, summary, ctx, Transcript.suggestionHistory(events));
     this.logLine("💡 Žádám model o návrhy z průběhu.");
     void this.loop(prompt);
   }
@@ -198,6 +210,44 @@ export class Controller implements vscode.Disposable {
     this.session.update({ suggestions: s.suggestions });
   }
 
+  /** Návrh je duplikát něčeho, co už existuje (bez update= nedává smysl ho nabízet). */
+  private async isDuplicateSuggestion(sug: Suggestion): Promise<boolean> {
+    if (sug.update) return false;
+    const host = this.host ?? this.newEngine().hostRef();
+    const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+    const body = norm(sug.body);
+    try {
+      switch (sug.kind) {
+        case "skill":
+          return this.skills.some((k) => k.name === norm(sug.title).replace(/[^a-z0-9._-]+/g, "-") || (k.body && norm(k.body) === body));
+        case "rule": {
+          const rules = [...readGlobalRules()];
+          if (await host.exists(RULES_FILE)) rules.push(...(await host.readFile(RULES_FILE)).split(/\r?\n/).map((l) => l.replace(/^\s*[-*]\s+/, "").trim()).filter(Boolean));
+          return rules.some((r) => norm(r) === body);
+        }
+        case "whisper": {
+          const texts = [readGlobalInstructions(), (await host.exists("WHISPER.md")) ? await host.readFile("WHISPER.md") : ""].map(norm);
+          return body.length > 0 && texts.some((t) => t.includes(body));
+        }
+        case "hook": {
+          const h = JSON.parse(sug.body) as { match?: string; run?: string };
+          const hooks = [...readGlobalHooks(), ...(await loadHooks(host))];
+          return hooks.some((x) => x.match === h.match && x.run === h.run);
+        }
+        case "allow":
+          return (host.policy.allowPatterns ?? []).includes(sug.body.trim()) || host.policy.autoAllow.some((a) => norm(a) === body);
+        case "task": {
+          const plan = (await host.exists(PLAN_FILE)) ? norm(await host.readFile(PLAN_FILE)) : "";
+          return plan.includes(norm(sug.title));
+        }
+        default:
+          return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+
   /** Přijme nebo zamítne všechny čekající návrhy (v pořadí, každý zvlášť, chyby nezastaví ostatní). */
   async decideAllSuggestions(approve: boolean): Promise<void> {
     const pending = (this.session.current?.suggestions ?? []).filter((x) => !x.decision);
@@ -208,16 +258,40 @@ export class Controller implements vscode.Disposable {
     const host = this.host ?? this.newEngine().hostRef();
     const global = sug.scope === "global";
     switch (sug.kind) {
-      case "skill":
-        saveSkill(workspaceRoot().fsPath, sug.title, sug.body, global);
+      case "skill": {
+        if (sug.update) {
+          // úprava existujícího skillu: přepíše soubor tam, kde skill žije
+          const existing = this.skills.find((k) => k.name === sug.update!.toLowerCase().replace(/^\//, ""));
+          if (!existing?.source) throw new Error(`skill /${sug.update} neexistuje`);
+          fs.writeFileSync(existing.source, sug.body.trim() + "\n", "utf8");
+        } else {
+          saveSkill(workspaceRoot().fsPath, sug.title, sug.body, global);
+        }
         this.reloadSkills();
         return;
+      }
       case "whisper":
         if (global) appendGlobalInstructions(sug.body);
         else await host.appendFile("WHISPER.md", `\n${sug.body.trim()}\n`);
         return;
       case "rule": {
         const rule = sug.body.replace(/\s+/g, " ").trim() || sug.title;
+        if (sug.update) {
+          // "rule N" = pořadí v sekci Additional rules (globální pravidla první, pak projektová)
+          const n = Number((sug.update.match(/(\d+)/) ?? [])[1]);
+          const globalRules = readGlobalRules();
+          if (!n) throw new Error(`neplatný cíl úpravy "${sug.update}", čekáno "rule N"`);
+          if (n <= globalRules.length) {
+            replaceGlobalRule(n - 1, rule);
+          } else {
+            const lines = (await host.exists(RULES_FILE)) ? (await host.readFile(RULES_FILE)).split(/\r?\n/) : [];
+            const idx = lines.map((l, i) => (l.replace(/^\s*[-*]\s+/, "").trim() && !l.trim().startsWith("#") ? i : -1)).filter((i) => i >= 0)[n - globalRules.length - 1];
+            if (idx === undefined) throw new Error(`pravidlo ${n} neexistuje`);
+            lines[idx] = `- ${rule}`;
+            await host.writeFile(RULES_FILE, lines.join("\n"));
+          }
+          return;
+        }
         if (global) appendGlobalRule(rule);
         else await host.appendFile(RULES_FILE, `- ${rule}\n`);
         return;
@@ -225,8 +299,20 @@ export class Controller implements vscode.Disposable {
       case "hook": {
         const hook = JSON.parse(sug.body) as { match?: string; run?: string; cwd?: string };
         if (!hook.match || !hook.run) throw new Error('hook musí být JSON s "match" a "run"');
-        if (global) addGlobalHook({ match: hook.match, run: hook.run, cwd: hook.cwd });
-        else await addHook(host, { match: hook.match, run: hook.run, cwd: hook.cwd });
+        const entry = { match: hook.match, run: hook.run, cwd: hook.cwd };
+        if (sug.update) {
+          if (replaceGlobalHook(sug.update, entry)) return;
+          const project = await loadHooks(host);
+          const i = project.findIndex((h) => h.match === sug.update);
+          if (i < 0) throw new Error(`hook s match "${sug.update}" neexistuje`);
+          const own = project.filter((h) => !readGlobalHooks().some((g) => g.match === h.match && g.run === h.run));
+          const j = own.findIndex((h) => h.match === sug.update);
+          if (j >= 0) own[j] = entry;
+          await host.writeFile(".whisper/hooks.json", JSON.stringify({ afterChange: own }, null, 2) + "\n");
+          return;
+        }
+        if (global) addGlobalHook(entry);
+        else await addHook(host, entry);
         return;
       }
       case "allow":
@@ -416,8 +502,12 @@ export class Controller implements vscode.Disposable {
             await this.transcript?.append({ session: s.id, kind: "plan", turn: rec.turn, text: s.plan });
           }
           for (const sug of (s.suggestions ?? []).filter((x) => x.turn === rec.turn)) {
+            if (await this.isDuplicateSuggestion(sug)) {
+              sug.duplicate = true;
+              sug.decision = "rejected";
+            }
             this.pushItem({ kind: "suggestion", turn: rec.turn, text: `${sug.kind}: ${sug.title}`, data: sug });
-            await this.transcript?.append({ session: s.id, kind: "suggestion", turn: rec.turn, text: `${sug.kind}: ${sug.title}` });
+            await this.transcript?.append({ session: s.id, kind: "suggestion", turn: rec.turn, text: `${sug.kind}: ${sug.title}${sug.duplicate ? " → duplicate" : ""}` });
           }
         }
 

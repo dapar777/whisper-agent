@@ -107,4 +107,29 @@ describe("plan, suggest, hooks, transcript", () => {
     expect(prompt).toContain("## Work history to analyse");
     expect(prompt).toContain("<suggest");
   });
+
+  it("tells the suggester what already exists and what was rejected, and supports update=", async () => {
+    await new Transcript(host).append({ session: "s1", kind: "suggestion", text: "allow: Testy bez potvrzení → rejected" });
+    await new Transcript(host).append({ session: "s1", kind: "suggestion", text: "rule: Testy nakonec → approved" });
+    const events = await new Transcript(host).readAll();
+    const history = Transcript.suggestionHistory(events);
+    expect(history).toEqual({ approved: ["rule: Testy nakonec"], rejected: ["allow: Testy bez potvrzení"] });
+    const ctx = {
+      workspaceName: "w",
+      tree: "",
+      rules: ["Run tests once."],
+      skills: [{ name: "review", description: "Code review" }],
+      existing: { hooks: ["**/*.ts → npm run lint"], allowPatterns: ["^git status\\b"], autoAllow: ["npm test"], planOpen: ["Přidat validaci"], skillBodies: [{ name: "review", body: "# review\nCheck everything." }] },
+    };
+    const prompt = buildSuggestPrompt("s1", 1, "history", ctx, DEFAULT_OPTIONS, history);
+    expect(prompt).toContain("## Already configured");
+    expect(prompt).toContain("hooks: **/*.ts → npm run lint");
+    expect(prompt).toContain("REJECTED earlier (do not propose again): allow: Testy bez potvrzení");
+    expect(prompt).toContain('improve it with update="review"');
+    expect(prompt).toContain("Check everything.");
+    const parsed = parseReply('<whisper turn="1">\n<suggest kind="skill" update="review" title="Lepší review">\n# review\nCheck tests too.\n</suggest>\n<done>ok</done>\n</whisper>');
+    const session = createSession("t", "stateful");
+    await engine.execute(session, parsed, 100);
+    expect(session.suggestions?.[0].update).toBe("review");
+  });
 });

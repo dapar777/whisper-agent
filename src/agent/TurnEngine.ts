@@ -1,5 +1,5 @@
 import { readGlobalInstructions, readGlobalRules } from "../global/GlobalConfig";
-import { runHooks } from "../hooks/Hooks";
+import { loadHooks, runHooks } from "../hooks/Hooks";
 import { Host } from "../host/Host";
 
 /** Projektová pravidla chování agenta (jedno na řádek). */
@@ -13,6 +13,7 @@ import {
   buildResumePrompt,
   buildSuggestPrompt,
   ProjectContext,
+  SuggestionHistory,
   summarizeTurn,
 } from "../protocol/PromptBuilder";
 import { parseReply } from "../protocol/ResponseParser";
@@ -64,6 +65,18 @@ export class TurnEngine {
       }
     }
     if (rules.length) ctx.rules = rules;
+    // co už existuje (pro návrhy, aby se neopakovaly)
+    const hooks = await loadHooks(this.host);
+    const policy = this.host.policy;
+    ctx.existing = {
+      hooks: hooks.map((h) => `${h.match} → ${h.run}${h.cwd ? ` (cwd ${h.cwd})` : ""}`),
+      allowPatterns: policy.allowPatterns ?? [],
+      autoAllow: policy.autoAllow,
+      planOpen: (ctx.plan ?? "")
+        .split(/\r?\n/)
+        .filter((l) => /^\s*[-*]\s+\[ \]/.test(l))
+        .map((l) => l.replace(/^\s*[-*]\s+\[ \]\s*/, "").trim()),
+    };
     if (active) ctx.active = active;
     if (skills?.length) ctx.skills = skills;
     const diag = await this.host.diagnostics();
@@ -88,10 +101,10 @@ export class TurnEngine {
   }
 
   /** Prompt s žádostí o návrhy (skilly, hooky, povolení, úkoly) z přehledu průběhu. */
-  suggestPrompt(session: SessionData, transcriptSummary: string, ctx: ProjectContext): string {
+  suggestPrompt(session: SessionData, transcriptSummary: string, ctx: ProjectContext, history?: SuggestionHistory): string {
     const o = this.optsFor(session);
     this.preamble = buildPreamble(ctx, o);
-    return buildSuggestPrompt(session.id, session.turn, transcriptSummary, ctx, o);
+    return buildSuggestPrompt(session.id, session.turn, transcriptSummary, ctx, o, history);
   }
 
   /**
@@ -157,7 +170,7 @@ export class TurnEngine {
     if (outcome.suggestions.length) {
       session.suggestions = [
         ...(session.suggestions ?? []),
-        ...outcome.suggestions.map((s): Suggestion => ({ id: nowId(), kind: s.kind as Suggestion["kind"], scope: s.scope, title: s.title, body: s.body, turn })),
+        ...outcome.suggestions.map((s): Suggestion => ({ id: nowId(), kind: s.kind as Suggestion["kind"], scope: s.scope, title: s.title, body: s.body, update: s.update, turn })),
       ];
     }
 

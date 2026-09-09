@@ -48,6 +48,27 @@ export function appendGlobalRule(rule: string): void {
   appendTo(path.join(GLOBAL_DIR, "rules.md"), `- ${one}`);
 }
 
+/** Nahradí globální pravidlo (index v pořadí readGlobalRules) novým zněním; vrací false, když neexistuje. */
+export function replaceGlobalRule(index: number, text: string): boolean {
+  const rules = readGlobalRules();
+  if (index < 0 || index >= rules.length) return false;
+  rules[index] = text.replace(/\s+/g, " ").trim();
+  fs.mkdirSync(GLOBAL_DIR, { recursive: true });
+  fs.writeFileSync(path.join(GLOBAL_DIR, "rules.md"), rules.map((r) => `- ${r}`).join("\n") + "\n", "utf8");
+  return true;
+}
+
+/** Nahradí globální hook podle match; vrací false, když neexistuje. */
+export function replaceGlobalHook(match: string, hook: { match: string; run: string; cwd?: string }): boolean {
+  const hooks = readGlobalHooks();
+  const i = hooks.findIndex((h) => h.match === match);
+  if (i < 0) return false;
+  hooks[i] = hook;
+  fs.mkdirSync(GLOBAL_DIR, { recursive: true });
+  fs.writeFileSync(path.join(GLOBAL_DIR, "hooks.json"), JSON.stringify({ afterChange: hooks }, null, 2) + "\n", "utf8");
+  return true;
+}
+
 export function readGlobalHooks(): { match: string; run: string; cwd?: string }[] {
   try {
     const data = JSON.parse(readIfExists(path.join(GLOBAL_DIR, "hooks.json")) || "{}") as { afterChange?: { match: string; run: string; cwd?: string }[] };

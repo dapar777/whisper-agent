@@ -21,6 +21,7 @@ export interface SuggestionDraft {
   scope: "project" | "global";
   title: string;
   body: string;
+  update?: string;
 }
 
 export interface RunOutcome {
@@ -221,8 +222,9 @@ export class ToolRunner {
       return { tool: "suggest", attrs: a.attrs, status: "error", output: `Unknown suggestion kind "${a.attrs.kind}"; use one of ${[...SUGGEST_KINDS].join(", ")}.` };
     }
     const scope = (a.attrs.scope ?? "").toLowerCase() === "global" ? "global" : "project";
-    outcome.suggestions.push({ kind, scope, title: a.attrs.title ?? kind, body: (a.body ?? "").trim() });
-    return { tool: "suggest", attrs: { kind, scope, title: a.attrs.title ?? kind }, status: "ok", meta: { queued: "awaiting user approval" } };
+    const update = a.attrs.update?.trim() || undefined;
+    outcome.suggestions.push({ kind, scope, title: a.attrs.title ?? kind, body: (a.body ?? "").trim(), update });
+    return { tool: "suggest", attrs: { kind, scope, title: a.attrs.title ?? kind, ...(update ? { update } : {}) }, status: "ok", meta: { queued: "awaiting user approval" } };
   }
 
   private async saveFullOutput(turn: number, a: Action, output: string): Promise<string> {

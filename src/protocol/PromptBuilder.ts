@@ -31,6 +31,22 @@ export interface ProjectContext {
   rules?: string[];
   /** dostupné skilly (jen názvy a popisy) */
   skills?: { name: string; description: string }[];
+  /** co už je nakonfigurované (pro návrhy, aby se neopakovaly) */
+  existing?: {
+    hooks?: string[];
+    allowPatterns?: string[];
+    autoAllow?: string[];
+    planOpen?: string[];
+    settings?: Record<string, unknown>;
+    /** obsah existujících skillů (zkrácený), aby šlo navrhnout jejich úpravu místo nového */
+    skillBodies?: { name: string; body: string }[];
+  };
+}
+
+/** Historie dřívějších návrhů (z transkriptu), aby se nenavrhovalo znovu. */
+export interface SuggestionHistory {
+  approved: string[];
+  rejected: string[];
 }
 
 export interface TurnSummary {
@@ -150,9 +166,35 @@ export function buildRules(opts: BuilderOptions): string {
 }
 
 /** Prompt, který požádá model o návrhy skillů/hooků/úkolů z průběhu práce. */
-export function buildSuggestPrompt(sessionId: string, turn: number, transcript: string, ctx: ProjectContext, opts: BuilderOptions): string {
+export function buildSuggestPrompt(
+  sessionId: string,
+  turn: number,
+  transcript: string,
+  ctx: ProjectContext,
+  opts: BuilderOptions,
+  history: SuggestionHistory = { approved: [], rejected: [] },
+): string {
+  const existing: string[] = [];
+  const ex = ctx.existing ?? {};
+  if (ctx.rules?.length) existing.push(`- rules already in the preamble: ${ctx.rules.length} (listed above under "Additional rules")`);
+  if (ctx.skills?.length) existing.push(`- skills: ${ctx.skills.map((s) => "/" + s.name).join(", ")}`);
+  if (ex.hooks?.length) existing.push(`- hooks: ${ex.hooks.join("; ")}`);
+  if (ex.allowPatterns?.length) existing.push(`- allow patterns (regex): ${ex.allowPatterns.join(" , ")}`);
+  if (ex.autoAllow?.length) existing.push(`- commands allowed by prefix: ${ex.autoAllow.join(", ")}`);
+  if (ex.planOpen?.length) existing.push(`- open plan tasks: ${ex.planOpen.slice(0, 20).join(" | ")}`);
+  if (ex.settings && Object.keys(ex.settings).length) existing.push(`- settings: ${JSON.stringify(ex.settings)}`);
+  if (history.approved.length) existing.push(`- suggestions the user already APPROVED earlier: ${history.approved.slice(-30).join(" | ")}`);
+  if (history.rejected.length) existing.push(`- suggestions the user REJECTED earlier (do not propose again): ${history.rejected.slice(-30).join(" | ")}`);
+  for (const s of ex.skillBodies ?? []) {
+    const body = s.body.length > 700 ? s.body.slice(0, 700) + " …" : s.body;
+    existing.push(`- skill /${s.name} (current content, improve it with update="${s.name}" instead of adding a similar skill):\n  ${body.replace(/\n/g, "\n  ")}`);
+  }
   return [
     buildPreamble(ctx, opts),
+    "## Already configured (check before proposing; never duplicate or rephrase these)",
+    "",
+    ...(existing.length ? existing : ["- nothing yet"]),
+    "",
     "## Work history to analyse",
     "",
     transcript.trim(),
@@ -176,9 +218,14 @@ export function buildSuggestPrompt(sessionId: string, turn: number, transcript: 
     "   skill or whisper with scope=global for instructions useful everywhere, agent (feedback for the developer of",
     "   the agent: protocol, tools, prompts or UI that hindered you; cannot be applied automatically).",
     "",
-    "Do not repeat rules or instructions the preamble already contains. Propose at most 10 suggestions, each",
-    "concrete and justified by the history (say which turn or event motivates it). If nothing is worth suggesting,",
-    "say so in <done>.",
+    "BEFORE each suggestion check the \"Already configured\" section and the preamble: if an equivalent rule, hook,",
+    "pattern, skill, setting or task already exists (even worded differently), or the user rejected it earlier, do",
+    "NOT propose it; propose only what is missing. If the problem is better solved by IMPROVING an existing item,",
+    "propose that instead of a new one: <suggest kind=\"skill\" update=\"name\"> with the complete new skill text,",
+    "<suggest kind=\"rule\" update=\"rule N\"> with the replacement wording of rule N from \"Additional rules\", or",
+    "<suggest kind=\"hook\" update=\"<match glob>\"> with the replacement hook JSON. Propose at most 10 suggestions,",
+    "each concrete and justified by the history (say which turn or event motivates it). If nothing is worth",
+    "suggesting, say so in <done>.",
     "",
     `Session: ${sessionId}. Reply with <whisper turn="${turn}">.`,
   ].join("\n");
