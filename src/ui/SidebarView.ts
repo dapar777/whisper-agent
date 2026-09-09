@@ -46,6 +46,8 @@ export class SidebarView implements vscode.WebviewViewProvider {
         return c.approvals.decide(m.id!, !!m.allow, m.always);
       case "suggestion":
         return c.decideSuggestion(m.id!, !!m.approve);
+      case "suggestionsAll":
+        return c.decideAllSuggestions(!!m.approve);
       case "setMode":
         return c.approvals.setMode(m.mode ?? "ask");
       case "autoAll":
@@ -212,6 +214,13 @@ export class SidebarView implements vscode.WebviewViewProvider {
   .review .row { display: flex; gap: 6px; align-items: center; padding: 2px 0; }
   .review .path { flex: 1; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  .sugItem { border-top: 1px solid var(--border); padding: 4px 0; }
+  .sugItem summary { display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; }
+  .sugItem summary::-webkit-details-marker { display: none; }
+  .sugItem summary::before { content: "▸"; color: var(--muted); font-size: 10px; }
+  .sugItem[open] summary::before { content: "▾"; }
+  .sugItem pre { margin-top: 4px; max-height: 160px; }
+
   /* composer */
   .composer { padding: 8px 10px 10px; border-top: 1px solid var(--border); position: relative; }
   .composer .box { display: flex; gap: 6px; align-items: flex-end; }
@@ -262,6 +271,11 @@ export class SidebarView implements vscode.WebviewViewProvider {
   <div id="chat"></div>
 
   <div id="review" class="review" hidden></div>
+
+  <div id="suggestions" class="review" hidden>
+    <div class="row"><b>Návrhy ke schválení (<span id="sugCount"></span>)</b><span class="spacer"></span><button id="sugToggle" class="ghost small">▾</button><button class="small primary" id="sugAcceptAll">Přijmout vše</button><button class="small" id="sugRejectAll">Zamítnout vše</button></div>
+    <div id="sugList"></div>
+  </div>
 
   <div id="composer" class="composer">
     <div id="popup" class="popup" hidden></div>
@@ -336,6 +350,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
     $("modeBtn").textContent = (state.approvals.mode === "auto" ? "auto" : "ptát se") + " · výjimky " + ((state.approvals.patterns || []).length);
     $("modeBtn").className = "pill" + (state.approvals.mode === "auto" ? " on" : "");
     renderExceptions();
+    renderSuggestions();
     $("stopBtn").hidden = !(active && s.state !== "done");
     $("undoBtn").hidden = !(active);
     $("resendBtn").hidden = !(active && s.state !== "done");
@@ -438,9 +453,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
         const d = it.data || {};
         const live = s && s.suggestions ? s.suggestions.find((x) => x.id === d.id) : null;
         const decision = (live && live.decision) || d.decision;
-        return '<div class="msg suggest"><div class="head"><b>Návrh</b><span class="badge">' + esc(d.kind) + '</span><span class="badge" title="' + (d.scope === "global" ? "platí ve všech projektech (~/.whisper, uživatelská nastavení)" : "jen tento projekt") + '">' + (d.scope === "global" ? "globální" : "projekt") + "</span></div><b>" + esc(d.title) + "</b><pre>" + esc(d.body) + "</pre>" +
-          (decision ? '<div class="btns"><span class="badge">' + (decision === "approved" ? "přijato" : "zamítnuto") + "</span></div>" :
-          '<div class="btns"><button class="primary small" data-act="sugYes" data-id="' + esc(d.id) + '">Přijmout</button><button class="small" data-act="sugNo" data-id="' + esc(d.id) + '">Zamítnout</button></div>') + "</div>";
+        return '<div class="line">💡 návrh <span class="badge">' + esc(d.kind) + "</span> " + esc(d.title) + (decision ? ' <span class="badge">' + (decision === "approved" ? "přijato" : "zamítnuto") + "</span>" : " · čeká v sekci Návrhy") + "</div>";
       }
       default: return "";
     }
@@ -521,6 +534,31 @@ export class SidebarView implements vscode.WebviewViewProvider {
   const addPattern = (global) => { const v = $("newPattern").value.trim(); if (!v) return; send("addPattern", { text: v, approve: global }); $("newPattern").value = ""; };
   $("addPatternWs").onclick = () => addPattern(false);
   $("addPatternGlobal").onclick = () => addPattern(true);
+  let sugOpen = true;
+  $("sugToggle").onclick = () => { sugOpen = !sugOpen; renderSuggestions(); };
+  $("sugAcceptAll").onclick = () => send("suggestionsAll", { approve: true });
+  $("sugRejectAll").onclick = () => send("suggestionsAll", { approve: false });
+  function renderSuggestions() {
+    const all = (state.session && state.session.suggestions) || [];
+    const pending = all.filter((x) => !x.decision);
+    const box = $("suggestions");
+    box.hidden = pending.length === 0;
+    if (!pending.length) return;
+    $("sugCount").textContent = pending.length;
+    $("sugToggle").textContent = sugOpen ? "▾" : "▸";
+    const list = $("sugList");
+    if (!sugOpen) { list.innerHTML = ""; return; }
+    const groups = [["global", "Agent globálně (všechny projekty)"], ["project", "Tento projekt"]];
+    list.innerHTML = groups.map(([scope, label]) => {
+      const items = pending.filter((x) => (x.scope || "project") === scope);
+      if (!items.length) return "";
+      return '<div class="sub" style="margin-top:6px"><b>' + label + "</b></div>" + items.map((x) =>
+        '<details class="sugItem"><summary><span class="badge">' + esc(x.kind) + "</span> " + esc(x.title) +
+        '<span class="btns" style="margin:0 0 0 auto"><button class="small primary" data-sug="' + esc(x.id) + '" data-ok="1" title="Přijmout">✓</button><button class="small" data-sug="' + esc(x.id) + '" data-ok="0" title="Zamítnout">✗</button></span></summary><pre>' + esc(x.body) + "</pre></details>").join("");
+    }).join("");
+    for (const b of list.querySelectorAll("[data-sug]")) b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); send("suggestion", { id: b.dataset.sug, approve: b.dataset.ok === "1" }); };
+  }
+
   function renderExceptions() {
     $("modeAsk").className = "small" + (state.approvals.mode === "ask" ? " primary" : "");
     $("modeAuto").className = "small" + (state.approvals.mode === "auto" ? " primary" : "");

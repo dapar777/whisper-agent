@@ -96,13 +96,17 @@ public static class TbWin {
     }, IntPtr.Zero);
     return best != IntPtr.Zero ? best : any;
   }
-  public static ITaskbarList3 Create() { var t = (ITaskbarList3)new TaskbarListClass(); t.HrInit(); return t; }
+  // PowerShell neumí volat metody COM rozhraní přímo, proto obalovací statické metody
+  static ITaskbarList3 tb;
+  public static void Init() { tb = (ITaskbarList3)new TaskbarListClass(); tb.HrInit(); }
+  public static int Progress(IntPtr h, int flags, ulong value) { int r = tb.SetProgressState(h, flags); if (value > 0) tb.SetProgressValue(h, value, 100); return r; }
+  public static int Overlay(IntPtr h, IntPtr icon, string desc) { return tb.SetOverlayIcon(h, icon, desc); }
 }
 "@
 $state = $env:WHISPER_TB_STATE
 $hwnd = [TbWin]::FindCode($env:WHISPER_TB_HINT)
 if ($hwnd -eq [IntPtr]::Zero) { throw "VS Code window not found" }
-$tb = [TbWin]::Create()
+[TbWin]::Init()
 switch ($state) {
   'waiting'   { $color = [System.Drawing.Color]::FromArgb(217,119,87);  $glyph = '…'; $prog = 1;  $val = 0 }
   'attention' { $color = [System.Drawing.Color]::FromArgb(210,153,34);  $glyph = '!'; $prog = 8;  $val = 100 }
@@ -111,10 +115,9 @@ switch ($state) {
   'error'     { $color = [System.Drawing.Color]::FromArgb(248,81,73);   $glyph = '×'; $prog = 4;  $val = 100 }
   default     { $color = $null; $glyph = ''; $prog = 0; $val = 0 }
 }
-[void]$tb.SetProgressState($hwnd, $prog)
-if ($val -gt 0) { [void]$tb.SetProgressValue($hwnd, [uint64]$val, [uint64]100) }
+[void][TbWin]::Progress($hwnd, [int]$prog, [uint64]$val)
 if ($color -eq $null) {
-  [void]$tb.SetOverlayIcon($hwnd, [IntPtr]::Zero, '')
+  [void][TbWin]::Overlay($hwnd, [IntPtr]::Zero, '')
 } else {
   $bmp = New-Object System.Drawing.Bitmap 32, 32
   $g = [System.Drawing.Graphics]::FromImage($bmp)
@@ -126,7 +129,7 @@ if ($color -eq $null) {
   $fmt = New-Object System.Drawing.StringFormat; $fmt.Alignment = 'Center'; $fmt.LineAlignment = 'Center'
   $g.DrawString($glyph, $font, [System.Drawing.Brushes]::White, (New-Object System.Drawing.RectangleF 0, -1, 32, 32), $fmt)
   $hicon = $bmp.GetHicon()
-  [void]$tb.SetOverlayIcon($hwnd, $hicon, "Whisper: $state")
+  [void][TbWin]::Overlay($hwnd, $hicon, "Whisper: $state")
   [TbWin]::DestroyIcon($hicon) | Out-Null
   $g.Dispose(); $bmp.Dispose()
 }

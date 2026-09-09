@@ -198,6 +198,12 @@ export class Controller implements vscode.Disposable {
     this.session.update({ suggestions: s.suggestions });
   }
 
+  /** Přijme nebo zamítne všechny čekající návrhy (v pořadí, každý zvlášť, chyby nezastaví ostatní). */
+  async decideAllSuggestions(approve: boolean): Promise<void> {
+    const pending = (this.session.current?.suggestions ?? []).filter((x) => !x.decision);
+    for (const sug of pending) await this.decideSuggestion(sug.id, approve);
+  }
+
   private async applySuggestion(sug: Suggestion): Promise<void> {
     const host = this.host ?? this.newEngine().hostRef();
     const global = sug.scope === "global";
