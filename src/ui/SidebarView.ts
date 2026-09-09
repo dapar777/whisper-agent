@@ -360,8 +360,11 @@ export class SidebarView implements vscode.WebviewViewProvider {
     if (active && STATE[s.state]) {
       const [cls, title, sub] = STATE[s.state];
       banner.hidden = false; banner.className = "banner " + cls;
-      $("bannerTitle").textContent = title + (s.state === "waitingForReply" ? " · kolo " + s.turn : "");
-      $("bannerSub").textContent = s.state === "waitingForReply" ? sub + " (" + kb(s.promptChars) + " znaků)" : sub;
+      const sent = state.promptPhase === "sent";
+      $("bannerTitle").textContent = (s.state === "waitingForReply" ? (sent ? "Čekám na odpověď modelu" : "Prompt je ve schránce, vložte ho do chatu") + " · kolo " + s.turn : title);
+      $("bannerSub").textContent = s.state === "waitingForReply"
+        ? (sent ? "Prompt byl vložen. Až model odpoví, zkopírujte odpověď (Ctrl+C), Whisper ji sám převezme." : "Vložte prompt do chatu (Ctrl+V); Whisper pozná, že byl vložen.") + " (" + kb(s.promptChars) + " znaků)"
+        : sub;
       const b = $("bannerBtns"); b.innerHTML = "";
       if (s.state === "waitingForReply") {
         b.innerHTML = '<button class="primary small" data-act="copyAgain">📋 Zkopírovat prompt znovu</button><button class="small" data-act="showPrompt">Zobrazit prompt</button><button class="small" data-act="pasteClip">Vzít odpověď ze schránky</button><button class="small" data-act="resend" title="Pro nový chat: preambule + shrnutí dosavadního průběhu">↻ Poslat celý kontext znovu</button>';
