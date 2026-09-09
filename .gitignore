@@ -1,0 +1,5 @@
+node_modules/
+dist/
+out/
+.whisper/
+# sestavený balíček se verzuje záměrně (instalace bez buildu)

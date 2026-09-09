@@ -1,0 +1,126 @@
+{
+  "name": "whisper-agent",
+  "displayName": "Whisper Agent",
+  "description": "Kódovací agent pro VS Code, který s LLM komunikuje přes schránku (bez API klíče).",
+  "version": "0.1.0",
+  "publisher": "dapar",
+  "license": "MIT",
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "secondarySidebar": [
+        { "id": "whisper", "title": "Whisper Agent", "icon": "media/icon.svg" }
+      ]
+    },
+    "views": {
+      "whisper": [
+        { "type": "webview", "id": "whisper.sidebar", "name": "Whisper Agent" }
+      ]
+    },
+    "commands": [
+      { "command": "whisper.newTask", "title": "Whisper: Nový úkol" },
+      { "command": "whisper.pasteReply", "title": "Whisper: Vložit odpověď ze schránky" },
+      { "command": "whisper.copyPromptAgain", "title": "Whisper: Zkopírovat aktuální prompt znovu" },
+      { "command": "whisper.resendContext", "title": "Whisper: Znovu poslat kontext (nový chat)" },
+      { "command": "whisper.undoTurn", "title": "Whisper: Undo posledního kola" },
+      { "command": "whisper.abort", "title": "Whisper: Zrušit úkol" },
+      { "command": "whisper.showPrompt", "title": "Whisper: Zobrazit aktuální prompt" },
+      { "command": "whisper.showTranscript", "title": "Whisper: Otevřít záznam průběhu (.whisper/transcript.jsonl)" },
+      { "command": "whisper.suggest", "title": "Whisper: Navrhnout skilly, hooky a úkoly z průběhu" },
+      { "command": "whisper.reloadSkills", "title": "Whisper: Znovu načíst skilly" },
+      { "command": "whisper.toggleAutoApprove", "title": "Whisper: Přepnout automatické schvalování příkazů" },
+      { "command": "whisper.review.next", "title": "Whisper: Projít změny (další změna)" },
+      { "command": "whisper.review.acceptAll", "title": "Whisper: Přijmout všechny změny" },
+      { "command": "whisper.review.rejectAll", "title": "Whisper: Zamítnout všechny změny" },
+      { "command": "whisper.review.acceptHunk", "title": "Whisper: Přijmout změnu" },
+      { "command": "whisper.review.rejectHunk", "title": "Whisper: Zamítnout změnu" },
+      { "command": "whisper.review.acceptFile", "title": "Whisper: Přijmout změny v souboru" },
+      { "command": "whisper.review.rejectFile", "title": "Whisper: Zamítnout změny v souboru" },
+      { "command": "whisper.review.openDiff", "title": "Whisper: Zobrazit diff souboru" }
+    ],
+    "menus": {
+      "commandPalette": [
+        { "command": "whisper.review.acceptHunk", "when": "false" },
+        { "command": "whisper.review.rejectHunk", "when": "false" },
+        { "command": "whisper.review.acceptFile", "when": "false" },
+        { "command": "whisper.review.rejectFile", "when": "false" },
+        { "command": "whisper.review.openDiff", "when": "false" }
+      ]
+    },
+    "keybindings": [
+      { "command": "whisper.newTask", "key": "ctrl+alt+w" },
+      { "command": "whisper.pasteReply", "key": "ctrl+alt+v" }
+    ],
+    "configuration": {
+      "title": "Whisper Agent",
+      "properties": {
+        "whisper.mode": {
+          "type": "string", "enum": ["stateful", "stateless"], "default": "stateful",
+          "description": "stateful: chat drží historii, posílají se jen výsledky. stateless: každý prompt je soběstačný."
+        },
+        "whisper.clipboard.watch": { "type": "boolean", "default": true, "description": "Hlídat schránku a odpověď převzít automaticky." },
+        "whisper.clipboard.pollMs": { "type": "number", "default": 500 },
+        "whisper.clipboard.fileAboveChars": {
+          "type": "number", "default": 0,
+          "description": "Jen Windows: prompt delší než N znaků se uloží jako .txt a do schránky se dá soubor, který chat po Ctrl+V připojí jako přílohu. 0 = vždy text."
+        },
+        "whisper.prompt.maxChars": { "type": "number", "default": 60000, "description": "Maximální délka promptu; výsledky, které se nevejdou, se odloží a model si je vyžádá znovu." },
+        "whisper.prompt.resultMaxChars": { "type": "number", "default": 12000, "description": "Maximální délka výstupu příkazu/hledání v promptu (obsah souborů z <read> se nezkracuje)." },
+        "whisper.prompt.treeMaxEntries": { "type": "number", "default": 200 },
+        "whisper.prompt.language": { "type": "string", "default": "cs", "description": "Jazyk, kterým má model mluvit s uživatelem (status, ask, done)." },
+        "whisper.run.autoAllow": {
+          "type": "array", "items": { "type": "string" },
+          "default": ["npm test", "npm run build", "npm run lint", "npx tsc", "tsc", "git status", "git diff", "git log", "npx vitest run", "pytest", "cargo test", "cargo build", "go test", "go build", "dotnet build", "dotnet test"],
+          "description": "Příkazy (prefixy), které se spouštějí bez potvrzení."
+        },
+        "whisper.run.approval": {
+          "type": "string", "enum": ["ask", "auto"], "default": "ask",
+          "description": "ask: příkazy mimo allowlist se schvalují v panelu. auto: spouštějí se bez dotazu (denylist platí dál)."
+        },
+        "whisper.run.allowPatterns": {
+          "type": "array", "items": { "type": "string" }, "default": [],
+          "description": "Regulární výrazy na celý příkaz, které se spouštějí bez potvrzení (přidává i tlačítko „Povolit vždy“)."
+        },
+        "whisper.suggest.continuous": {
+          "type": "boolean", "default": false,
+          "description": "Model smí průběžně navrhovat skilly, hooky, povolení a úkoly (<suggest>); návrhy se jen zobrazí ke schválení."
+        },
+        "whisper.plan.auto": {
+          "type": "boolean", "default": true,
+          "description": "Model smí u větších úkolů sám založit a udržovat plán (checklist v .whisper/plan.md). /plan ho vynutí vždy."
+        },
+        "whisper.run.deny": {
+          "type": "array", "items": { "type": "string" },
+          "default": ["rm -rf", "git push --force", "git push -f", "sudo", "format ", "del /s", "Remove-Item -Recurse"],
+          "description": "Příkazy (podřetězce), které se nikdy nespustí."
+        },
+        "whisper.review.requireApproval": { "type": "boolean", "default": false, "description": "Ukázat diff a čekat na schválení před každým zápisem." },
+        "whisper.checkpoint.git": { "type": "boolean", "default": true, "description": "Před každým kolem uložit git checkpoint pro Undo." },
+        "whisper.protectedPaths": {
+          "type": "array", "items": { "type": "string" },
+          "default": [".env", ".env.*", ".git/**", "node_modules/**", "**/*.pem", "**/*.key"]
+        },
+        "whisper.notify.sound": { "type": "boolean", "default": false }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "package": "vsce package --no-dependencies",
+    "vscode:prepublish": "npm run build -- --production"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.2.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

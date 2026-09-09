@@ -1,0 +1,66 @@
+import { Host } from "../host/Host";
+import { ActionResult } from "../protocol/schema";
+import { isAutoAllowedCommand, isDeniedCommand } from "../safety/Policy";
+import { takeScreenshot } from "./screenshot";
+
+export async function toolRun(host: Host, attrs: Record<string, string>, body: string, turn = 0, index = 0, signal?: AbortSignal): Promise<ActionResult> {
+  const command = body.trim();
+  const meta: Record<string, string | number> = { command };
+  const denied = isDeniedCommand(command, host.policy);
+  if (denied) {
+    return { tool: "run", attrs, status: "denied", output: `Command blocked by policy (matches "${denied}").`, meta };
+  }
+  const cwd = attrs.cwd || ".";
+  if (cwd !== ".") host.assertInside(cwd);
+  if (!isAutoAllowedCommand(command, host.policy)) {
+    const ok = await host.confirmCommand(command, cwd);
+    if (!ok) return { tool: "run", attrs, status: "denied", output: "The user declined to run this command.", meta };
+  }
+  const timeoutMs = Math.min(1800, Math.max(5, Number(attrs.timeout) || 120)) * 1000;
+  const captureMs = attrs.capture ? Math.min(120, Math.max(1, Number(attrs.capture) || 3)) * 1000 : undefined;
+  let probeMs = attrs.probe ? Math.min(120, Math.max(1, Number(attrs.probe) || 5)) * 1000 : undefined;
+  // capture bez probe: proces po snímku ukončíme, jinak by GUI viselo do timeoutu
+  if (captureMs && (!probeMs || probeMs <= captureMs)) probeMs = captureMs + 1500;
+  host.log(`$ ${command}${probeMs ? ` (probe ${probeMs / 1000}s)` : ""}${captureMs ? ` (capture ${captureMs / 1000}s)` : ""}`);
+  const running = host.run(command, cwd, timeoutMs, probeMs, signal);
+  let shot: ActionResult | undefined;
+  if (captureMs) {
+    await new Promise((res) => setTimeout(res, captureMs));
+    shot = await takeScreenshot(host, turn, index, { window: attrs.window, name: "run" });
+  }
+  const r = await running;
+  const shotNote = shot ? `\n[${shot.output}]` : "";
+  const attachments = shot?.attachments;
+  if (r.interrupted) {
+    return {
+      tool: "run",
+      attrs,
+      status: "error",
+      output: `[INTERRUPTED by the user after ${(r.durationMs / 1000).toFixed(1)}s; the process was killed. Partial output follows.]\n` + (r.output || "(no output)"),
+      meta: { ...meta, exit: "interrupted", duration: (r.durationMs / 1000).toFixed(1) + "s" },
+      attachments,
+    };
+  }
+  if (r.stillRunning) {
+    return {
+      tool: "run",
+      attrs,
+      status: "ok",
+      output: `[probe: process was still running after ${probeMs! / 1000}s, so it started successfully; it was then stopped by the probe]${shotNote}\n` + (r.output || "(no output)"),
+      meta: { ...meta, exit: "running", duration: (r.durationMs / 1000).toFixed(1) + "s", ...(shot?.meta?.file ? { screenshot: shot.meta.file } : {}) },
+      attachments,
+    };
+  }
+  return {
+    tool: "run",
+    attrs,
+    status: r.exit === 0 && !r.timedOut ? "ok" : "error",
+    output:
+      (r.timedOut ? `[timed out after ${timeoutMs / 1000}s and was killed; for GUI apps or servers use probe="N" instead]\n` : "") +
+      (probeMs && r.exit !== 0 ? `[probe: process exited with code ${r.exit} before ${probeMs / 1000}s elapsed, so it did NOT start properly]\n` : "") +
+      (shotNote ? shotNote.trim() + "\n" : "") +
+      (r.output || "(no output)"),
+    meta: { ...meta, exit: r.exit, duration: (r.durationMs / 1000).toFixed(1) + "s", ...(shot?.meta?.file ? { screenshot: shot.meta.file } : {}) },
+    attachments,
+  };
+}

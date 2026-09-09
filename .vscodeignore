@@ -1,0 +1,12 @@
+.vscode/**
+src/**
+test/**
+node_modules/**
+out/**
+.whisper/**
+esbuild.mjs
+tsconfig.json
+vitest.config.mts
+DESIGN.md
+**/*.map
+scripts/**
