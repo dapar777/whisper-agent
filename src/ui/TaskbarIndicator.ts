@@ -1,6 +1,6 @@
 import { execFile } from "child_process";
 
-export type IndicatorState = "idle" | "waiting" | "attention" | "executing" | "done" | "error";
+export type IndicatorState = "idle" | "waitingFresh" | "waiting" | "attention" | "executing" | "done" | "error";
 
 /**
  * Stav agenta na tlačítku VS Code v hlavním panelu Windows (ITaskbarList3):
@@ -108,6 +108,7 @@ $hwnd = [TbWin]::FindCode($env:WHISPER_TB_HINT)
 if ($hwnd -eq [IntPtr]::Zero) { throw "VS Code window not found" }
 [TbWin]::Init()
 switch ($state) {
+  'waitingFresh' { $color = [System.Drawing.Color]::FromArgb(217,119,87); $glyph = [string][char]0x2192; $prog = 8; $val = 100 }
   'waiting'   { $color = [System.Drawing.Color]::FromArgb(217,119,87);  $glyph = '…'; $prog = 1;  $val = 0 }
   'attention' { $color = [System.Drawing.Color]::FromArgb(210,153,34);  $glyph = '!'; $prog = 8;  $val = 100 }
   'executing' { $color = [System.Drawing.Color]::FromArgb(88,166,255);  $glyph = '»'; $prog = 1;  $val = 0 }

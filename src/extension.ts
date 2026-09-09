@@ -22,7 +22,10 @@ export function activate(context: vscode.ExtensionContext): void {
   const renderStatus = () => {
     const s = session.current;
     const map: Record<string, string> = {
-      waitingForReply: `$(clock) Whisper: kolo ${s?.turn} – vlož prompt do chatu`,
+      waitingForReply:
+        controller.promptPhase === "sent"
+          ? `$(clock) Whisper: kolo ${s?.turn} – čekám na odpověď modelu`
+          : `$(clippy) Whisper: kolo ${s?.turn} – prompt ve schránce, vlož ho do chatu`,
       executing: "$(gear~spin) Whisper: provádím akce",
       awaitingUser: "$(question) Whisper: model se ptá",
       done: "$(check) Whisper: hotovo",
@@ -44,7 +47,9 @@ export function activate(context: vscode.ExtensionContext): void {
     const state: IndicatorState = attention
       ? "attention"
       : s?.state === "waitingForReply"
-        ? "waiting"
+        ? controller.promptPhase === "sent"
+          ? "waiting"
+          : "waitingFresh"
         : s?.state === "executing"
           ? "executing"
           : s?.state === "done"
@@ -57,6 +62,7 @@ export function activate(context: vscode.ExtensionContext): void {
   session.onDidChange(renderStatus);
   review.onDidChange(renderStatus);
   approvals.onDidChange(renderStatus);
+  controller.onDidChange(renderStatus);
   renderStatus();
 
   const cmd = (id: string, fn: (...args: any[]) => unknown) => vscode.commands.registerCommand(id, fn);

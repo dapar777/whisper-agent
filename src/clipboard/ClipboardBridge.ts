@@ -2,6 +2,7 @@ import { execFile } from "child_process";
 import * as vscode from "vscode";
 import { looksLikeReply, normalizeClipboard } from "../protocol/replyDetect";
 import { cfg, workspaceRoot, writeText } from "../util";
+import { ClipboardOwner } from "./ClipboardOwner";
 
 /** Windows: vloží do schránky soubory (file drop list); prohlížeč je po Ctrl+V připojí jako přílohy. */
 function setClipboardFiles(fsPaths: string[]): Promise<void> {
@@ -22,6 +23,20 @@ function setClipboardFiles(fsPaths: string[]): Promise<void> {
  */
 export class ClipboardBridge implements vscode.Disposable {
   private lastPrompt = "";
+  private readonly otherEmitter = new vscode.EventEmitter<void>();
+  /** Ve schránce se objevilo něco jiného než náš prompt a než odpověď (uživatel pracuje v chatu). */
+  readonly onDidCopyOther = this.otherEmitter.event;
+  /** Vlastník schránky s odloženým vykreslením: hlásí skutečné vložení promptu (Windows). */
+  private readonly owner = new ClipboardOwner();
+  readonly onDidPaste = this.owner.onDidPaste;
+
+  constructor() {
+    // uživatel zkopíroval něco jiného (typicky odpověď): schránku hned přečteme
+    this.owner.onDidLose(() => {
+      this.otherEmitter.fire();
+      void this.pollOnce();
+    });
+  }
   private timer: NodeJS.Timeout | undefined;
   private waiter: { resolve: (text: string) => void; reject: (e: Error) => void } | undefined;
 
@@ -45,12 +60,24 @@ export class ClipboardBridge implements vscode.Disposable {
         /* spadne zpět na text */
       }
     }
-    await vscode.env.clipboard.writeText(
-      attachments.length
-        ? text + `\n\n[Attachments could not be put on the clipboard as files; please attach manually: ${attachments.join(", ")}]`
-        : text,
-    );
+    const finalText = attachments.length
+      ? text + `\n\n[Attachments could not be put on the clipboard as files; please attach manually: ${attachments.join(", ")}]`
+      : text;
+    // Windows: převzít schránku s odloženým vykreslením, aby šlo poznat skutečné vložení
+    if (await this.owner.take(finalText)) return "text";
+    await vscode.env.clipboard.writeText(finalText);
     return "text";
+  }
+
+  /** Jednorázové přečtení schránky (po ztrátě vlastnictví); odpověď se převezme hned. */
+  private async pollOnce(): Promise<void> {
+    if (!this.waiter) return;
+    try {
+      const text = await vscode.env.clipboard.readText();
+      if (looksLikeReply(text, this.lastPrompt)) this.waiter.resolve(text);
+    } catch {
+      /* ignore */
+    }
   }
 
   get currentPrompt(): string {
@@ -100,6 +127,8 @@ export class ClipboardBridge implements vscode.Disposable {
     let lastSeen = normalizeClipboard(this.lastPrompt);
     this.timer = setInterval(async () => {
       if (!this.waiter) return this.stopPolling();
+      // dokud schránku vlastníme my, obsah známe; čtení by navíc spustilo naše vlastní vykreslení
+      if (this.owner.alive) return;
       let text: string;
       try {
         text = await vscode.env.clipboard.readText();
@@ -111,6 +140,7 @@ export class ClipboardBridge implements vscode.Disposable {
       if (seen === lastSeen) return;
       lastSeen = seen;
       if (looksLikeReply(text, this.lastPrompt)) this.waiter.resolve(text);
+      else if (seen !== normalizeClipboard(this.lastPrompt)) this.otherEmitter.fire(); // uživatel zkopíroval něco jiného → prompt už odnesl
     }, poll);
   }
 
@@ -128,5 +158,7 @@ export class ClipboardBridge implements vscode.Disposable {
 
   dispose(): void {
     this.cancelWait(new Error("disposed"));
+    this.owner.dispose();
+    this.otherEmitter.dispose();
   }
 }

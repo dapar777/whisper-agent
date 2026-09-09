@@ -74,7 +74,24 @@ export class Controller implements vscode.Disposable {
     readonly approvals: ApprovalService,
   ) {
     approvals.onDidChange(() => this.changeEmitter.fire());
+    // fáze promptu: "fresh" = ve schránce, ještě nevložen; "sent" = skutečně vložen (schránku si vyžádala jiná
+    // aplikace) nebo uživatel zkopíroval něco jiného
+    clipboard.onDidPaste(() => {
+      if (this.promptPhase === "fresh") this.setPromptPhase("sent");
+    });
+    clipboard.onDidCopyOther(() => {
+      if (this.promptPhase === "fresh") this.setPromptPhase("sent");
+    });
     this.reloadSkills();
+  }
+
+  /** "fresh" = prompt ve schránce, ještě nevložen do chatu; "sent" = zřejmě vložen, čeká se na model. */
+  promptPhase: "fresh" | "sent" | undefined;
+
+  private setPromptPhase(phase: "fresh" | "sent" | undefined): void {
+    if (this.promptPhase === phase) return;
+    this.promptPhase = phase;
+    this.changeEmitter.fire();
   }
 
   // ---------- veřejné API pro UI ----------
@@ -436,6 +453,7 @@ export class Controller implements vscode.Disposable {
           skipCopy = false;
         } else {
           const mode = await this.clipboard.copyPrompt(prompt, s.turn, attachments);
+          this.setPromptPhase("fresh");
           this.pushItem({ kind: "prompt", turn: s.turn, text: mode === "file" ? "soubor" : "text", data: { chars: prompt.length, mode, attachments } });
           await this.transcript?.append({ session: s.id, kind: "prompt", turn: s.turn, data: { chars: prompt.length } });
           this.notifyCopied(prompt, s.turn, mode);
@@ -445,8 +463,10 @@ export class Controller implements vscode.Disposable {
         try {
           replyText = await this.clipboard.waitForReply(token);
         } catch {
+          this.setPromptPhase(undefined);
           return; // zrušeno / nahrazeno
         }
+        this.setPromptPhase(undefined);
         if (isOwnPrompt(replyText)) {
           this.logLine("⚠ Ve schránce je náš prompt, ne odpověď modelu; čekám dál.");
           skipCopy = true;

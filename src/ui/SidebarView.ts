@@ -114,6 +114,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
         : undefined,
       items: c.items.slice(-150),
       current: c.currentAction,
+      promptPhase: c.promptPhase,
       approvals: { mode: c.approvals.mode, pending: c.approvals.pendingRequests, history: c.approvals.history.slice(-8), patterns: c.approvals.allowPatterns() },
       review: c.review.pendingFiles.map((f) => ({ path: f.path, kind: f.kind, hunks: hunks.filter((h) => h.path === f.path).length })),
       commands: c.commands().map((x) => ({ name: x.name, kind: x.kind, description: x.description })),
