@@ -1,10 +1,15 @@
 /** Čisté textové utility bez závislosti na vscode. */
 
-/** Jednoduché glob → RegExp (**, *, ?, {a,b}). Cesty s "/" oddělovači. */
+/** Jednoduché glob → RegExp (**, *, ?, {a,b} i vnořené, [abc]). Cesty s "/" oddělovači. */
 export function globToRegExp(glob: string): RegExp {
+  const g = glob.replace(/\\/g, "/").replace(/^\.\//, "");
+  return new RegExp("^" + globBody(g) + "$");
+}
+
+/** Převod těla globu; alternativy ve složených závorkách se převádějí rekurzivně. */
+function globBody(g: string): string {
   let re = "";
   let i = 0;
-  const g = glob.replace(/\\/g, "/").replace(/^\.\//, "");
   while (i < g.length) {
     const c = g[i];
     if (c === "*") {
@@ -15,10 +20,18 @@ export function globToRegExp(glob: string): RegExp {
       }
       re += "[^/]*";
     } else if (c === "?") re += "[^/]";
-    else if (c === "{") {
-      const end = g.indexOf("}", i);
+    else if (c === "[") {
+      const end = g.indexOf("]", i);
+      if (end > i + 1) {
+        re += "[" + g.slice(i + 1, end).replace(/\\/g, "\\\\") + "]";
+        i = end + 1;
+        continue;
+      }
+      re += "\\[";
+    } else if (c === "{") {
+      const end = matchingBrace(g, i);
       if (end > 0) {
-        re += "(?:" + g.slice(i + 1, end).split(",").map(escapeRe).join("|") + ")";
+        re += "(?:" + splitTopLevel(g.slice(i + 1, end)).map(globBody).join("|") + ")";
         i = end + 1;
         continue;
       }
@@ -26,19 +39,49 @@ export function globToRegExp(glob: string): RegExp {
     } else re += escapeRe(c);
     i++;
   }
-  return new RegExp("^" + re + "$");
+  return re;
+}
+
+function matchingBrace(g: string, open: number): number {
+  let depth = 0;
+  for (let i = open; i < g.length; i++) {
+    if (g[i] === "{") depth++;
+    else if (g[i] === "}" && --depth === 0) return i;
+  }
+  return -1;
+}
+
+function splitTopLevel(s: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let cur = "";
+  for (const ch of s) {
+    if (ch === "{") depth++;
+    if (ch === "}") depth--;
+    if (ch === "," && depth === 0) {
+      parts.push(cur);
+      cur = "";
+    } else cur += ch;
+  }
+  parts.push(cur);
+  return parts;
 }
 
 function escapeRe(s: string): string {
-  return s.replace(/[.+^$()|[\]\\]/g, "\\$&");
+  return s.replace(/[.+^$()|[\]\\*?{}]/g, "\\$&");
 }
 
+/** Odpovídá cesta některému globu? Neplatný vzor se tiše přeskočí (nikdy neshodí kolo). */
 export function matchesAny(rel: string, globs: string[]): boolean {
   const r = rel.replace(/\\/g, "/");
   const base = r.split("/").pop() ?? r;
   return globs.some((g) => {
-    const re = globToRegExp(g);
-    return re.test(r) || re.test(base);
+    try {
+      const re = globToRegExp(g);
+      return re.test(r) || re.test(base);
+    } catch {
+      return false;
+    }
   });
 }
 

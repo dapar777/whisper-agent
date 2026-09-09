@@ -50,16 +50,21 @@ export async function runHooks(host: Host, changedPaths: string[]): Promise<Acti
   if (changedPaths.length === 0) return [];
   const results: ActionResult[] = [];
   for (const hook of await loadHooks(host)) {
-    if (!changedPaths.some((p) => matchesAny(p, [hook.match]))) continue;
-    host.log(`hook: ${hook.run}`);
-    const r = await host.run(hook.run, hook.cwd ?? ".", 300_000);
-    results.push({
-      tool: "hook",
-      attrs: { match: hook.match, run: hook.run },
-      status: r.exit === 0 && !r.timedOut ? "ok" : "error",
-      output: (r.timedOut ? "[timed out]\n" : "") + (r.output || "(no output)"),
-      meta: { exit: r.exit, duration: (r.durationMs / 1000).toFixed(1) + "s" },
-    });
+    try {
+      if (!changedPaths.some((p) => matchesAny(p, [hook.match]))) continue;
+      host.log(`hook: ${hook.run}`);
+      const r = await host.run(hook.run, hook.cwd ?? ".", 300_000);
+      results.push({
+        tool: "hook",
+        attrs: { match: hook.match, run: hook.run },
+        status: r.exit === 0 && !r.timedOut ? "ok" : "error",
+        output: (r.timedOut ? "[timed out]\n" : "") + (r.output || "(no output)"),
+        meta: { exit: r.exit, duration: (r.durationMs / 1000).toFixed(1) + "s" },
+      });
+    } catch (e) {
+      // chybný hook nesmí shodit celé kolo; model i uživatel se o něm dozví z výsledku
+      results.push({ tool: "hook", attrs: { match: hook.match, run: hook.run }, status: "error", output: `Hook failed: ${(e as Error).message}` });
+    }
   }
   return results;
 }
