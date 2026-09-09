@@ -30,6 +30,8 @@ export interface RunOutcome {
   changedFiles: boolean;
   changedPaths: string[];
   statuses: string[];
+  /** přímé výměny v chatu mimo protokol (otázka modelu, odpověď/upřesnění uživatele) */
+  dialog: { from: "model" | "user"; text: string }[];
   /** nový/aktualizovaný plán (markdown) */
   plan?: string;
   suggestions: SuggestionDraft[];
@@ -58,10 +60,10 @@ export class ToolRunner {
   ) {}
 
   async runAll(actions: Action[], turn: number, ctx: RunContext = {}): Promise<RunOutcome> {
-    const outcome: RunOutcome = { results: [], changedFiles: false, changedPaths: [], statuses: [], suggestions: [] };
+    const outcome: RunOutcome = { results: [], changedFiles: false, changedPaths: [], statuses: [], dialog: [], suggestions: [] };
     for (const a of actions) {
       if (ctx.signal?.aborted) {
-        if (!["status", "ask", "done"].includes(a.tool)) {
+        if (!["status", "ask", "done", "dialog"].includes(a.tool)) {
           outcome.results.push({ tool: a.tool, attrs: a.attrs, status: "skipped", output: "Not executed: the user interrupted this turn before this action.", meta: { interrupted: "before start" } });
         }
         continue;
@@ -112,6 +114,12 @@ export class ToolRunner {
           outcome.statuses.push(a.body ?? "");
           this.host.log(`● ${a.body ?? ""}`);
           return undefined;
+        case "dialog": {
+          const from = (a.attrs.from ?? "").toLowerCase() === "user" ? "user" : "model";
+          outcome.dialog.push({ from, text: (a.body ?? "").trim() });
+          this.host.log(`💬 ${from}: ${(a.body ?? "").trim().split("\n")[0].slice(0, 120)}`);
+          return undefined;
+        }
         case "ask": {
           outcome.question = a.body ?? "";
           const opts = (a.attrs.options ?? "")

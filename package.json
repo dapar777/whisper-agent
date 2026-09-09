@@ -84,6 +84,10 @@
           "type": "array", "items": { "type": "string" }, "default": [],
           "description": "Regulární výrazy na celý příkaz, které se spouštějí bez potvrzení (přidává i tlačítko „Povolit vždy“)."
         },
+        "whisper.ask.direct": {
+          "type": "boolean", "default": true,
+          "description": "Přímý dialog: model se smí ptát přímo v chatu a uživatel tam odpovídat či upřesňovat; výměnu pak model zapíše akcí <dialog>, aby ji Whisper zaznamenal. Odpověď bez bloku akcí se bere jako otázka v chatu, ne jako chyba."
+        },
         "whisper.suggest.continuous": {
           "type": "boolean", "default": false,
           "description": "Model smí průběžně navrhovat skilly, hooky, povolení a úkoly (<suggest>); návrhy se jen zobrazí ke schválení."

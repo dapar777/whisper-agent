@@ -12,6 +12,8 @@ export interface BuilderOptions {
   planAuto?: boolean;
   /** model smí průběžně posílat <suggest> */
   continuousSuggest?: boolean;
+  /** přímý dialog: model se ptá přímo v chatu a výměnu zapíše přes <dialog> */
+  directDialog?: boolean;
 }
 
 export interface ProjectContext {
@@ -153,6 +155,16 @@ export function buildRules(opts: BuilderOptions): string {
             "   work, split items; resend the complete <plan> whenever it changes. Small tasks need no plan.",
           ]
         : []),
+    ...(opts.directDialog !== false
+      ? [
+          "11. DIRECT DIALOGUE: the user reads this chat. When you need to ask something, you may ask directly in the",
+          "    chat text and wait for the user's answer here (no <whisper> block needed for that message). The user may",
+          "    also write clarifications directly in the chat. Whenever such an exchange happens, your NEXT <whisper>",
+          "    block must START with <dialog from=\"model\">the question you asked</dialog> and <dialog from=\"user\">",
+          "    the user's message, verbatim</dialog> so the agent records it. Prefer <ask options=…> when the answer is",
+          "    a choice from a few options.",
+        ]
+      : []),
     ...(opts.continuousSuggest
       ? [
           "10. When you notice something reusable, add a <suggest> action: a repeated instruction (kind=skill or whisper),",

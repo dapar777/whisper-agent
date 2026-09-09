@@ -66,6 +66,8 @@ export class SidebarView implements vscode.WebviewViewProvider {
         return c.abort();
       case "interrupt":
         return c.interrupt();
+      case "correction":
+        return c.sendCorrection();
       case "undo":
         return c.undoTurn();
       case "resend":
@@ -367,7 +369,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
         : sub;
       const b = $("bannerBtns"); b.innerHTML = "";
       if (s.state === "waitingForReply") {
-        b.innerHTML = '<button class="primary small" data-act="copyAgain">📋 Zkopírovat prompt znovu</button><button class="small" data-act="showPrompt">Zobrazit prompt</button><button class="small" data-act="pasteClip">Vzít odpověď ze schránky</button><button class="small" data-act="resend" title="Pro nový chat: preambule + shrnutí dosavadního průběhu">↻ Poslat celý kontext znovu</button>';
+        b.innerHTML = '<button class="primary small" data-act="copyAgain">📋 Zkopírovat prompt znovu</button><button class="small" data-act="showPrompt">Zobrazit prompt</button><button class="small" data-act="pasteClip">Vzít odpověď ze schránky</button><button class="small" data-act="resend" title="Pro nový chat: preambule + shrnutí dosavadního průběhu">↻ Poslat celý kontext znovu</button><button class="ghost small" data-act="correction" title="Když model odpověděl bez bloku akcí a nebyla to otázka">Poslat opravný prompt</button>';
       } else if (s.state === "awaitingUser") {
         b.innerHTML = '<button class="small" data-act="focus">Odpovědět</button>';
       } else if (s.state === "executing") {
@@ -436,6 +438,11 @@ export class SidebarView implements vscode.WebviewViewProvider {
       case "task": return '<div class="msg user"><div class="head"><b>Vy</b>' + (it.data && it.data.planMode ? '<span class="badge">plan</span>' : "") + '</div>' + md(it.text) + "</div>";
       case "note": return '<div class="msg user"><div class="head"><b>Vy</b><span>poznámka k dalšímu promptu</span></div>' + md(it.text) + "</div>";
       case "answer": return '<div class="msg user"><div class="head"><b>Vy</b><span>odpověď</span></div>' + md(it.text) + "</div>";
+      case "dialog": {
+        const d = it.data || {};
+        if (d.from === "user") return '<div class="msg user"><div class="head"><b>Vy</b><span>napsáno přímo v chatu</span></div>' + md(it.text) + "</div>";
+        return '<div class="msg ask"><div class="head"><b>Model' + (d.live ? " se ptá v chatu" : " se ptal v chatu") + "</b>" + turn + "</div>" + md(it.text) + (d.live ? '<div class="sub">Odpovězte přímo v chatu a zkopírujte jeho další odpověď.</div>' : "") + "</div>";
+      }
       case "prompt": {
         const att = it.data && it.data.attachments && it.data.attachments.length ? " · 📎 " + it.data.attachments.map((a) => esc(String(a).split("/").pop())).join(", ") : "";
         return '<div class="line">📋 kolo ' + it.turn + " · prompt ve schránce (" + kb(it.data ? it.data.chars : 0) + (it.data && it.data.mode === "file" ? ", soubory" : "") + ")" + att + '<span class="btns"><button class="ghost small" data-act="copyAgain">znovu</button><button class="ghost small" data-act="showPrompt">zobrazit</button></span></div>';

@@ -146,6 +146,14 @@ export const TOOLS: ToolDef[] = [
     example: "<status>Přidal jsem validaci, teď spouštím testy.</status>",
   },
   {
+    name: "dialog",
+    hasBody: true,
+    attrs: [{ name: "from", required: true, doc: "model = a question you asked directly in the chat; user = what the user wrote directly in the chat (answer, clarification), verbatim" }],
+    bodyDoc: "the exact text of the question or of the user's message",
+    doc: "Record a direct exchange that happened in the chat outside the protocol, so the agent keeps it in its log and context. Put these first in the block.",
+    example: '<dialog from="model">Má být validace i na serveru?</dialog>\n<dialog from="user">Jen v UI, server řešíme jinde.</dialog>',
+  },
+  {
     name: "plan",
     hasBody: true,
     attrs: [],

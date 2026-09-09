@@ -15,6 +15,7 @@ export interface TranscriptEvent {
     | "ask"
     | "answer"
     | "note"
+    | "dialog"
     | "plan"
     | "suggestion"
     | "done"
@@ -101,6 +102,9 @@ export class Transcript {
           break;
         case "note":
           lines.push(`user note: ${t.slice(0, 300)}`);
+          break;
+        case "dialog":
+          lines.push(`chat ${t.slice(0, 300)}`);
           break;
         case "plan":
           lines.push(`plan updated (${t.split("- [").length - 1} items)`);

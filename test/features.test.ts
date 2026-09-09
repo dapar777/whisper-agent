@@ -72,6 +72,22 @@ describe("plan, suggest, hooks, transcript", () => {
     expect(parsed.actions[0].attrs.capture).toBe("4");
   });
 
+  it("records direct chat exchanges sent via <dialog> and explains direct dialogue in the preamble", async () => {
+    const session = createSession("t", "stateful");
+    const parsed = parseReply('<whisper turn="1">\n<dialog from="model">Má být validace i na serveru?</dialog>\n<dialog from="user">Jen v UI.</dialog>\n<read path="a.ts"/>\n</whisper>');
+    expect(parsed.errors).toEqual([]);
+    const step = await engine.execute(session, parsed, 100);
+    expect(step.kind).toBe("next");
+    expect(session.history[0].dialog).toEqual([
+      { from: "model", text: "Má být validace i na serveru?" },
+      { from: "user", text: "Jen v UI." },
+    ]);
+    const on = buildInitialPrompt("s", "t", { workspaceName: "w", tree: "" }, { ...DEFAULT_OPTIONS, directDialog: true });
+    expect(on).toContain("DIRECT DIALOGUE");
+    const off = buildInitialPrompt("s", "t", { workspaceName: "w", tree: "" }, { ...DEFAULT_OPTIONS, directDialog: false });
+    expect(off).not.toContain("DIRECT DIALOGUE");
+  });
+
   it("adds learned rules and user instructions to the preamble", () => {
     const p = buildInitialPrompt("s", "t", { workspaceName: "w", tree: "", rules: ["Run tests once per turn."], globalInstructions: "Always answer in Czech." }, DEFAULT_OPTIONS);
     expect(p).toContain("## Additional rules");

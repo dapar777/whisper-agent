@@ -14,7 +14,7 @@ import {
 } from "../global/GlobalConfig";
 import { addHook, loadHooks } from "../hooks/Hooks";
 import { VsCodeHost } from "../host/VsCodeHost";
-import { ProjectContext } from "../protocol/PromptBuilder";
+import { buildCorrectionPrompt, ProjectContext } from "../protocol/PromptBuilder";
 import { isOwnPrompt, looksLikeReply } from "../protocol/replyDetect";
 import { BUILTIN_COMMANDS, composeTask, parseInput, SlashCommand } from "../protocol/slash";
 import { ReviewManager } from "../review/ReviewManager";
@@ -55,6 +55,15 @@ export class Controller implements vscode.Disposable {
   /** právě vykonávaná akce (pro banner s časem) */
   currentAction: { tool: string; target: string; startedAt: number; index: number; total: number } | undefined;
   private execAbort: AbortController | undefined;
+
+  /** Ručně pošle opravný prompt (když odpověď bez bloku nebyla otázka, ale chyba protokolu). */
+  async sendCorrection(): Promise<void> {
+    const s = this.session.current;
+    if (!s || s.state !== "waitingForReply") return;
+    this.cancelWait();
+    this.pushItem({ kind: "status", text: "Posílám opravný prompt." });
+    void this.loop(buildCorrectionPrompt(s.id, s.turn, ["The previous reply contained no <whisper> block with actions."]));
+  }
 
   /** Přeruší běžící provádění akcí; modelu se pošlou dosavadní výsledky s vysvětlením. */
   interrupt(): void {
@@ -442,6 +451,7 @@ export class Controller implements vscode.Disposable {
     this.cts = new vscode.CancellationTokenSource();
     const token = this.cts.token;
     const engine = this.engine!;
+    let noBlockStreak = 0;
     try {
       while (!token.isCancellationRequested) {
         const s = this.session.current;
@@ -482,6 +492,15 @@ export class Controller implements vscode.Disposable {
         }
         await this.transcript?.append({ session: s.id, kind: "reply", turn: s.turn, text: replyText.slice(0, 20000) });
         if (parsed.prose) this.pushItem({ kind: "status", turn: s.turn, text: parsed.prose.slice(0, 600) });
+        // přímý dialog: odpověď bez bloku je nejspíš otázka položená v chatu, ne chyba protokolu
+        if (parsed.actions.length === 0 && cfg<boolean>("ask.direct", true) && noBlockStreak < 1) {
+          noBlockStreak++;
+          this.pushItem({ kind: "dialog", turn: s.turn, text: replyText.trim().slice(0, 1500), data: { from: "model", live: true } });
+          this.pushItem({ kind: "status", text: "Model odpověděl bez bloku akcí, nejspíš se ptá přímo v chatu. Odpovězte mu tam a zkopírujte jeho další odpověď. Pokud jde o chybu, použijte „Poslat opravný prompt“." });
+          skipCopy = true;
+          continue;
+        }
+        noBlockStreak = parsed.actions.length ? 0 : noBlockStreak;
         if (parsed.errors.length) this.pushItem({ kind: "error", turn: s.turn, text: parsed.errors.join("\n") });
         if (parsed.actions.length) {
           this.session.update({ state: "executing" });
@@ -490,7 +509,7 @@ export class Controller implements vscode.Disposable {
           await this.checkpoint.take(s.turn);
         }
         this.execAbort = new AbortController();
-        const total = parsed.actions.filter((a) => !["status", "ask", "done"].includes(a.tool)).length;
+        const total = parsed.actions.filter((a) => !["status", "ask", "done", "dialog"].includes(a.tool)).length;
         let idx = 0;
         const step = await engine.execute(s, parsed, prompt.length, this.drainNotes(), {
           signal: this.execAbort.signal,
@@ -514,6 +533,10 @@ export class Controller implements vscode.Disposable {
 
         if (step.kind !== "correction") {
           const rec = step.record;
+          for (const d of rec.dialog ?? []) {
+            this.pushItem({ kind: "dialog", turn: rec.turn, text: d.text, data: { from: d.from } });
+            await this.transcript?.append({ session: s.id, kind: "dialog", turn: rec.turn, text: `${d.from}: ${d.text}` });
+          }
           for (const st of rec.status ? [rec.status] : []) this.pushItem({ kind: "status", turn: rec.turn, text: st });
           this.pushItem({ kind: "results", turn: rec.turn, text: describeResults(rec.results), data: rec.results.map((r) => ({ tool: r.tool, target: r.attrs.path ?? r.attrs.pattern ?? r.meta?.command ?? "", status: r.status, meta: r.meta })) });
           await this.transcript?.append({ session: s.id, kind: "results", turn: rec.turn, text: describeResults(rec.results) });
@@ -585,6 +608,7 @@ export class Controller implements vscode.Disposable {
         treeMaxEntries: cfg("prompt.treeMaxEntries", 200),
         planAuto: cfg("plan.auto", true),
         continuousSuggest: cfg("suggest.continuous", false),
+        directDialog: cfg("ask.direct", true),
       },
       listener,
     ) as TurnEngine & { hostRef(): VsCodeHost };

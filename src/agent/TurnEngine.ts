@@ -162,6 +162,7 @@ export class TurnEngine {
       prose: parsed.prose || undefined,
       status: statusNote,
       errors: parsed.errors.length ? parsed.errors : undefined,
+      dialog: outcome.dialog.length ? outcome.dialog : undefined,
     };
     session.history.push(record);
     session.summaries.push(summarizeTurn(turn, outcome.results, statusNote));
@@ -208,7 +209,7 @@ export class TurnEngine {
     let pos = 0;
     for (const a of last.actions) {
       if (a.index === action.index) break;
-      if (!["status", "ask", "done"].includes(a.tool)) pos++;
+      if (!["status", "ask", "done", "dialog"].includes(a.tool)) pos++;
     }
     const outcome = await this.runner.runAll([action], last.turn);
     if (outcome.results[0]) last.results.splice(pos, 1, outcome.results[0]);

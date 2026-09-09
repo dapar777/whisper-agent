@@ -20,6 +20,8 @@ export interface TurnRecord {
   prose?: string;
   status?: string;
   errors?: string[];
+  /** přímé výměny v chatu zapsané modelem přes <dialog> */
+  dialog?: { from: "model" | "user"; text: string }[];
 }
 
 export interface SessionData {
