@@ -78,6 +78,8 @@ export class SidebarView implements vscode.WebviewViewProvider {
         return c.reloadSkills();
       case "transcript":
         return c.showTranscript();
+      case "settings":
+        return void vscode.commands.executeCommand("whisper.openSettings");
       case "reviewNext":
         return void vscode.commands.executeCommand("whisper.review.next");
       case "acceptAll":
@@ -255,6 +257,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
     <button id="modeBtn" class="pill" title="Schvalování příkazů mimo allowlist">ptát se</button>
     <button id="menuSuggest" class="ghost small" title="Navrhnout skilly, hooky a úkoly z průběhu">💡</button>
     <button id="menuTranscript" class="ghost small" title="Otevřít záznam průběhu (.whisper/transcript.jsonl)">🗒</button>
+    <button id="menuSettings" class="ghost small" title="Otevřít nastavení Whisperu">⚙</button>
   </div>
 
   <div id="exceptions" class="banner" hidden>
@@ -581,6 +584,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
   }
   $("menuSuggest").onclick = () => send("suggest");
   $("menuTranscript").onclick = () => send("transcript");
+  $("menuSettings").onclick = () => send("settings");
   $("stopBtn").onclick = () => send("stop");
   $("undoBtn").onclick = () => send("undo");
   $("resendBtn").onclick = () => send("resend");

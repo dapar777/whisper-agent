@@ -14,6 +14,7 @@ import { createSession, SessionData } from "../session/SessionData";
 import { describeActions, describeResults, Transcript } from "../transcript/Transcript";
 import { loadSkills } from "../skills/Skills";
 import { BUILTIN_COMMANDS, composeTask, parseInput } from "../protocol/slash";
+import { BundleUsage } from "../protocol/PromptBuilder";
 
 const OUTBOX = ".whisper/outbox.md";
 const INBOX = ".whisper/inbox.md";
@@ -42,6 +43,8 @@ async function main(): Promise<void> {
     resultMaxChars: 12000,
     language: "cs",
     treeMaxEntries: 200,
+    // stupeň pobízení k <bundle>: --bundle=prefer apod. (výchozí jako v extensionu)
+    bundleUsage: (rest.find((r) => r.startsWith("--bundle="))?.split("=")[1] as BundleUsage) ?? "encourage",
   });
 
   const load = async (): Promise<SessionData> => JSON.parse(await host.readFile(STATE)) as SessionData;

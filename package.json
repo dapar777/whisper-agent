@@ -31,6 +31,7 @@
       { "command": "whisper.showTranscript", "title": "Whisper: Otevřít záznam průběhu (.whisper/transcript.jsonl)" },
       { "command": "whisper.suggest", "title": "Whisper: Navrhnout skilly, hooky a úkoly z průběhu" },
       { "command": "whisper.reloadSkills", "title": "Whisper: Znovu načíst skilly" },
+      { "command": "whisper.openSettings", "title": "Whisper: Otevřít nastavení" },
       { "command": "whisper.toggleAutoApprove", "title": "Whisper: Přepnout automatické schvalování příkazů" },
       { "command": "whisper.review.next", "title": "Whisper: Projít změny (další změna)" },
       { "command": "whisper.review.acceptAll", "title": "Whisper: Přijmout všechny změny" },
@@ -62,10 +63,21 @@
           "description": "stateful: chat drží historii, posílají se jen výsledky. stateless: každý prompt je soběstačný."
         },
         "whisper.clipboard.watch": { "type": "boolean", "default": true, "description": "Hlídat schránku a odpověď převzít automaticky." },
-        "whisper.clipboard.pollMs": { "type": "number", "default": 500 },
+        "whisper.clipboard.pollMs": { "type": "number", "default": 500, "description": "Přenos do chatu: jak často (ms) se kontroluje schránka, když se čeká na odpověď modelu." },
         "whisper.clipboard.fileAboveChars": {
           "type": "number", "default": 0,
           "description": "Jen Windows: prompt delší než N znaků se uloží jako .txt a do schránky se dá soubor, který chat po Ctrl+V připojí jako přílohu. 0 = vždy text."
+        },
+        "whisper.bundle.usage": {
+          "type": "string", "enum": ["off", "allow", "encourage", "prefer", "always"], "default": "encourage",
+          "enumDescriptions": [
+            "Vypnuto: model má zakázáno svazky používat, čte soubory jen po jednom.",
+            "Povoleno: nástroj je popsaný, ale model se k němu nepobízí.",
+            "Doporučeno (výchozí): nad zhruba pět souborů má model použít jeden svazek.",
+            "Upřednostnit: svazek už od tří souborů a vždy, když ještě neví, které soubory potřebuje.",
+            "Vždy: každý úkol má začít svazkem s relevantním kódem, jednotlivé čtení jen na doplnění."
+          ],
+          "description": "Přenos do chatu: jak silně pobízet model k hromadným txt svazkům (<bundle>) místo mnoha jednotlivých čtení. Text pokynu se podle stupně vloží do promptu."
         },
         "whisper.bundle.delivery": {
           "type": "string", "enum": ["history", "file"], "default": "history",
@@ -93,7 +105,7 @@
         },
         "whisper.prompt.maxChars": { "type": "number", "default": 60000, "description": "Maximální délka promptu; výsledky, které se nevejdou, se odloží a model si je vyžádá znovu." },
         "whisper.prompt.resultMaxChars": { "type": "number", "default": 12000, "description": "Maximální délka výstupu příkazu/hledání v promptu (obsah souborů z <read> se nezkracuje)." },
-        "whisper.prompt.treeMaxEntries": { "type": "number", "default": 200 },
+        "whisper.prompt.treeMaxEntries": { "type": "number", "default": 200, "description": "Velikost promptu: kolik souborů se nejvýš vypíše ve stromu projektu. Snižte u velkých repozitářů." },
         "whisper.prompt.language": { "type": "string", "default": "cs", "description": "Jazyk, kterým má model mluvit s uživatelem (status, ask, done)." },
         "whisper.run.autoAllow": {
           "type": "array", "items": { "type": "string" },
@@ -129,9 +141,10 @@
         "whisper.checkpoint.git": { "type": "boolean", "default": true, "description": "Před každým kolem uložit git checkpoint pro Undo." },
         "whisper.protectedPaths": {
           "type": "array", "items": { "type": "string" },
+          "description": "Bezpečnost: cesty (globy), do kterých agent nesmí zapisovat ani je mazat, i kdyby o to model požádal.",
           "default": [".env", ".env.*", ".git/**", "node_modules/**", "**/*.pem", "**/*.key"]
         },
-        "whisper.notify.sound": { "type": "boolean", "default": false }
+        "whisper.notify.sound": { "type": "boolean", "default": false, "description": "Pípnout, když agent potřebuje vaši pozornost (schválení příkazu, otázka, hotovo)." }
       }
     }
   },

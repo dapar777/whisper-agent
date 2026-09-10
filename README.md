@@ -82,6 +82,17 @@ schránky jdou soubory `prompt-N.txt` + `bundle-N.txt` a jedno `Ctrl+V` v chatu 
 Svazek je vždy soubor `*.txt` (jiné formáty chaty často odmítají). Prompt modelu říká, že svazek je
 přiložen, a co dělat, když ho nevidí.
 
+Jak silně se model k svazkům pobízí, řídí `whisper.bundle.usage`. Ke každému stupni patří jiný text
+vložený do pravidel v promptu:
+
+| Stupeň | Co se modelu řekne |
+|---|---|
+| `off` | svazky nepoužívej, čti soubory po jednom |
+| `allow` | nástroj je popsaný, žádné pobízení |
+| `encourage` (výchozí) | nad zhruba pět souborů použij jeden svazek |
+| `prefer` | svazek už od tří souborů a vždy, když ještě nevíš, které soubory potřebuješ |
+| `always` | každý úkol začni svazkem s relevantním kódem, jednotlivé čtení jen na doplnění |
+
 **Odpověď v souboru** (`whisper.reply.watchDir`): kromě schránky lze odpověď modelu doručit
 jako **nový soubor** ve sledované složce, třeba ve složce stahování prohlížeče. Sledují se jen
 soubory vzniklé po odeslání promptu, název musí vyhovovat `whisper.reply.filePattern`
@@ -147,6 +158,10 @@ Při novém úkolu se plán z předchozího sezení odloží: hotový se smaže,
 | Whisper: Přijmout / Zamítnout všechny změny | |
 
 ## Nastavení
+
+Otevřete je tlačítkem ⚙ v horní liště panelu, příkazem **Whisper: Otevřít nastavení**, nebo `Ctrl+,`
+a do hledání napište `whisper`. Instrukce pro projekt patří do `WHISPER.md` v kořeni workspace,
+pravidla do `.whisper/rules.md`, skilly do `.whisper/skills/`.
 
 - `whisper.mode` – `stateful` (chat drží historii, posílají se jen výsledky) nebo
   `stateless` (každý prompt je soběstačný).

@@ -14,7 +14,12 @@ export interface BuilderOptions {
   continuousSuggest?: boolean;
   /** přímý dialog: model se ptá přímo v chatu a výměnu zapíše přes <dialog> */
   directDialog?: boolean;
+  /** jak silně pobízet model k <bundle> místo mnoha <read> */
+  bundleUsage?: BundleUsage;
 }
+
+/** Stupně používání hromadných txt svazků (<bundle>). */
+export type BundleUsage = "off" | "allow" | "encourage" | "prefer" | "always";
 
 export interface ProjectContext {
   workspaceName: string;
@@ -138,6 +143,40 @@ export function buildProtocolSpec(): string {
   return lines.join("\n");
 }
 
+/**
+ * Text do preambule podle stupně `whisper.bundle.usage`. Bez tohoto pobídnutí model
+ * <bundle> skoro nepoužívá a raději posílá desítky jednotlivých <read>.
+ */
+export function bundleRule(level: BundleUsage): string | undefined {
+  switch (level) {
+    case "off":
+      return "Do NOT use <bundle>; request files with <read> only.";
+    case "allow":
+      return undefined; // nástroj je popsaný v seznamu akcí, žádné zvláštní pobídnutí
+    case "encourage":
+      return [
+        "When you need to see MORE THAN ABOUT FIVE files, ask for them with a single <bundle> instead of many",
+        "<read> actions: one bundle costs the user one paste, five reads cost five results in the next prompt.",
+        "Use <read> for one or two files, or when you need only a line range.",
+      ].join("\n");
+    case "prefer":
+      return [
+        "PREFER <bundle> over <read>. Whenever you need more than TWO files, or you do not yet know exactly which",
+        "files matter, request them in ONE <bundle> (globs and directories are allowed, e.g.",
+        '<bundle paths="src/**/*.ts, tests"/>). Getting too much context in one bundle is cheap; discovering a',
+        "missing file next turn is expensive. Keep <read> for a single file or a specific line range.",
+      ].join("\n");
+    case "always":
+      return [
+        "ALWAYS start a task by pulling the relevant code as ONE bundle: <bundle> with globs covering the modules",
+        'you will touch, or <bundle all="true"/> for a small or unfamiliar project. Do this in your FIRST block,',
+        "together with your exploration actions. Only after you have the bundle may you use <read>, and only for a",
+        "file the bundle did not contain or for a specific line range. Never send more than two <read> actions in",
+        "one block when a bundle would cover them.",
+      ].join("\n");
+  }
+}
+
 export function buildRules(opts: BuilderOptions): string {
   // každé pravidlo = jeden řetězec s odřádkováním; číslování se doplní až podle toho, která pravidla jsou zapnutá
   const rules: string[] = [
@@ -157,6 +196,8 @@ export function buildRules(opts: BuilderOptions): string {
     `Write <status>, <ask> and <done> texts in language "${opts.language}"; code and identifiers stay as in the project.`,
     "If a previous action failed, read the error, adjust and retry; do not repeat the identical action.",
   ];
+  const bundle = bundleRule(opts.bundleUsage ?? "encourage");
+  if (bundle) rules.splice(1, 0, bundle);
   if (opts.planMode) {
     rules.push(
       "PLAN MODE is ON for this task: your FIRST block must contain <plan> with a hierarchical markdown checklist\n" +

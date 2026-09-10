@@ -5,10 +5,11 @@ description: Prozkoumá projekt a založí/aktualizuje WHISPER.md (příkazy, st
 Create or update the project instructions file `WHISPER.md` in the workspace root so that any future
 session starts with the essential facts. Work like a new senior engineer joining the project.
 
-1. In ONE turn gather what you need: `<ls depth="2"/>`, the existing `WHISPER.md` if any, `README*`,
-   package/build manifests (`package.json`, `pyproject.toml`, `requirements*.txt`, `Cargo.toml`, `go.mod`,
-   `*.csproj`, `pom.xml`, `Makefile`, `CMakeLists.txt`), CI config (`.github/workflows/*`), lint/format
-   configs, and the test directory listing. Use `<glob>` for the manifests you are not sure about.
+1. In ONE turn gather what you need. Use a single `<bundle>` for the many small config files instead of a
+   dozen reads, e.g.
+   `<bundle paths="WHISPER.md, README*, package.json, pyproject.toml, requirements*.txt, Cargo.toml, go.mod, Makefile, *.csproj, .github/workflows/*, .eslintrc*, eslint.config.*, tsconfig*.json"/>`
+   (missing paths are simply skipped), plus `<ls depth="2"/>` for the layout and `<glob>` for anything you are
+   unsure about. On a small project `<bundle all="true"/>` is the fastest way to see everything at once.
 2. Derive, do not guess: the exact commands to install dependencies, build, run, lint and test (copy them
    from scripts/CI, note the working directory), the language/runtime versions, the top-level layout
    (what lives where, entry points), naming and style conventions visible in the code, and pitfalls

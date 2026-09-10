@@ -15,7 +15,7 @@ import {
 } from "../global/GlobalConfig";
 import { addHook, loadHooks } from "../hooks/Hooks";
 import { VsCodeHost } from "../host/VsCodeHost";
-import { buildCorrectionPrompt, ProjectContext } from "../protocol/PromptBuilder";
+import { BundleUsage, buildCorrectionPrompt, ProjectContext } from "../protocol/PromptBuilder";
 import { isOwnPrompt, looksLikeReply } from "../protocol/replyDetect";
 import { BUILTIN_COMMANDS, composeTask, parseInput, SlashCommand } from "../protocol/slash";
 import { ReviewManager } from "../review/ReviewManager";
@@ -43,6 +43,9 @@ const HELP = [
   "/explain <co>, /docs, /deps. Vlastní skilly: .whisper/skills/ (projekt) nebo ~/.whisper/skills/ (uživatel).",
   "",
   "Během čekání na odpověď můžete psát poznámky; přiloží se k dalšímu promptu. Když se model zeptá, odpověď napište sem.",
+  "",
+  "Nastavení: tlačítko ⚙ v horní liště panelu, nebo Ctrl+, a do hledání napsat „whisper“.",
+  "Instrukce pro projekt patří do WHISPER.md v kořeni, pravidla do .whisper/rules.md, skilly do .whisper/skills/.",
 ].join("\n");
 
 export class Controller implements vscode.Disposable {
@@ -669,6 +672,7 @@ export class Controller implements vscode.Disposable {
         planAuto: cfg("plan.auto", true),
         continuousSuggest: cfg("suggest.continuous", false),
         directDialog: cfg("ask.direct", true),
+        bundleUsage: cfg<BundleUsage>("bundle.usage", "encourage"),
       },
       listener,
     ) as TurnEngine & { hostRef(): VsCodeHost };

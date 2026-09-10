@@ -104,6 +104,7 @@ export function activate(context: vscode.ExtensionContext): void {
     cmd("whisper.abort", () => controller.abort()),
     cmd("whisper.suggest", () => controller.runSuggest()),
     cmd("whisper.reloadSkills", () => controller.reloadSkills()),
+    cmd("whisper.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "@ext:dapar.whisper-agent")),
     cmd("whisper.toggleAutoApprove", () => approvals.setMode(approvals.mode === "auto" ? "ask" : "auto")),
 
     cmd("whisper.review.next", async () => {
