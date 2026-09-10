@@ -93,7 +93,11 @@ k zadání jako instrukce. Whisper je nezávislý na jiných nástrojích a jeji
 - `whisper.clipboard.fileAboveChars` – jen Windows: prompt delší než N znaků jde do
   schránky jako soubor `.txt` (vloží se jako příloha). Výchozí 0 = vždy text; na
   claude.ai se dlouhý text stejně sám změní v přílohu, takže to obvykle není třeba.
-- `whisper.prompt.maxChars`, `whisper.prompt.resultMaxChars` – limity délky.
+- `whisper.prompt.maxChars`, `whisper.prompt.resultMaxChars` – limity délky. Dlouhý výstup
+  příkazu, který skončil s kódem 0, se posílá jen jako závěr (poslední ~4000 znaků), celý
+  výstup je v `.whisper/out/`. Neúspěšné příkazy se posílají celé (začátek + konec).
+- Limit `timeout` u `<run>` se počítá jen z doby, kdy počítač běžel; uspání (standby) se do
+  něj nezapočítá a modelu se ohlásí zvlášť.
 - `whisper.run.autoAllow` / `whisper.run.deny` – příkazy bez potvrzení / zakázané.
 - `whisper.review.requireApproval` – ukázat diff a čekat na schválení *před* zápisem.
 - `whisper.checkpoint.git` – git checkpoint před každým kolem (Undo kola).

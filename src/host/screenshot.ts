@@ -31,6 +31,16 @@ public class WinApi {
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hWnd, int attr, out RECT rect, int size);
+  // Viditelný obrys okna: GetWindowRect na Win10/11 zahrnuje i neviditelné okraje (~7 px),
+  // takže by snímek obsahoval proužky cizích oken kolem. DWMWA_EXTENDED_FRAME_BOUNDS = 9.
+  public static RECT VisibleRect(IntPtr hWnd) {
+    RECT r;
+    if (DwmGetWindowAttribute(hWnd, 9, out r, Marshal.SizeOf(typeof(RECT))) == 0 && r.Right > r.Left) return r;
+    GetWindowRect(hWnd, out r);
+    return r;
+  }
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   public static IntPtr Find(string part) {
     IntPtr found = IntPtr.Zero;
@@ -44,13 +54,14 @@ public class WinApi {
   }
 }
 "@
+[void][WinApi]::SetProcessDPIAware()
 $part = $env:WHISPER_SHOT_WINDOW
 $title = ''
 if ($part) {
   $h = [WinApi]::Find($part)
   if ($h -eq [IntPtr]::Zero) { throw "No visible window with title containing '$part'" }
   [void][WinApi]::SetForegroundWindow($h); Start-Sleep -Milliseconds 250
-  $r = New-Object WinApi+RECT; [void][WinApi]::GetWindowRect($h, [ref]$r)
+  $r = [WinApi]::VisibleRect($h)
   $bounds = New-Object System.Drawing.Rectangle($r.Left, $r.Top, ($r.Right - $r.Left), ($r.Bottom - $r.Top))
   $sb = New-Object System.Text.StringBuilder 512; [void][WinApi]::GetWindowText($h, $sb, 512); $title = $sb.ToString()
 } else {

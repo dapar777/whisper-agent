@@ -85,6 +85,23 @@ export function truncate(text: string, max: number, fullPath?: string): { text: 
   };
 }
 
+/** Nad tuto délku se výstup úspěšného příkazu posílá jen jako konec (začátek je k dispozici v souboru). */
+export const OK_RUN_OUTPUT_MAX = 4000;
+
+/**
+ * Úspěšný příkaz (exit 0) s dlouhým výstupem: model zpravidla potřebuje jen závěr
+ * (souhrn testů, poslední řádky buildu). Necháme konec, začátek jen shrneme.
+ */
+export function compactOkOutput(text: string, fullPath?: string): string {
+  if (text.length <= OK_RUN_OUTPUT_MAX) return text;
+  const tailText = text.slice(text.length - OK_RUN_OUTPUT_MAX);
+  const cut = tailText.indexOf("\n");
+  const tail = cut >= 0 ? tailText.slice(cut + 1) : tailText;
+  const omittedLines = text.slice(0, text.length - tail.length).split("\n").length - 1;
+  const hint = fullPath ? ` Full output: <read path="${fullPath}"/>.` : "";
+  return `… (exit 0; first ${omittedLines} lines omitted, showing the end.${hint})\n${tail}`;
+}
+
 function escapeAttr(v: string): string {
   return v.replace(/"/g, "&quot;").replace(/\n/g, " ");
 }
@@ -318,7 +335,8 @@ export function renderResult(r: ActionResult, opts: BuilderOptions): string {
   if (!r.output?.trim()) return `${head}/>`;
   const body = r.output.replace(/\r\n/g, "\n");
   // obsah souboru nikdy neusekávat uprostřed (délku hlídá pravidlo 400 řádků a rozpočet promptu)
-  const text = r.tool === "read" ? body : truncate(body, opts.resultMaxChars, r.fullOutputPath).text;
+  const text =
+    r.tool === "read" ? body : r.tool === "run" && r.status === "ok" ? compactOkOutput(body, r.fullOutputPath) : truncate(body, opts.resultMaxChars, r.fullOutputPath).text;
   return `${head}>\n${text}\n</result>`;
 }
 

@@ -78,8 +78,23 @@ describe("buildResultsPrompt", () => {
     const read = buildResultsPrompt("s1", 2, [{ tool: "read", attrs: { path: "a.ts" }, status: "ok", output: long }], {}, opts);
     expect(read).not.toContain("… (truncated");
     expect(read).toContain("400| line 399");
-    const run = buildResultsPrompt("s1", 2, [{ tool: "run", attrs: {}, status: "ok", output: long }], {}, opts);
-    expect(run).toContain("… (truncated");
+    const failed = buildResultsPrompt("s1", 2, [{ tool: "run", attrs: {}, status: "error", output: long }], {}, opts);
+    expect(failed).toContain("… (truncated");
+    expect(failed).toContain("1| line 0");
+    expect(failed).toContain("400| line 399");
+  });
+
+  it("keeps only the end of a long output of a successful command", () => {
+    const long = Array.from({ length: 600 }, (_, i) => `ok ${i} - some test name`).join("\n");
+    const run = buildResultsPrompt("s1", 2, [{ tool: "run", attrs: {}, status: "ok", output: long, fullOutputPath: ".whisper/out/run.txt" }], {}, DEFAULT_OPTIONS);
+    expect(run).toContain("(exit 0; first");
+    expect(run).toContain("lines omitted, showing the end");
+    expect(run).toContain('<read path=".whisper/out/run.txt"/>');
+    expect(run).toContain("ok 599 - some test name");
+    expect(run).not.toContain("ok 0 - some test name");
+    // krátký výstup zůstává celý
+    const short = buildResultsPrompt("s1", 2, [{ tool: "run", attrs: {}, status: "ok", output: "ok 1\nok 2" }], {}, DEFAULT_OPTIONS);
+    expect(short).toContain("ok 1\nok 2");
   });
 
   it("truncates long outputs with head and tail", () => {

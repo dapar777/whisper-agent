@@ -11,7 +11,10 @@ export interface RunResult {
   stillRunning?: boolean;
   /** uživatel běh přerušil */
   interrupted?: boolean;
+  /** aktivní doba běhu (bez doby, kdy byl počítač uspaný) */
   durationMs: number;
+  /** kolik ms byl během příkazu počítač uspaný (0 = nebyl) */
+  suspendedMs?: number;
 }
 
 export interface HostPolicy {

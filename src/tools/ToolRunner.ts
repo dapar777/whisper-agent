@@ -1,5 +1,6 @@
 import { Host } from "../host/Host";
 import { applyHunks, parseHunks } from "../protocol/edit";
+import { OK_RUN_OUTPUT_MAX } from "../protocol/PromptBuilder";
 import { Action, ActionResult } from "../protocol/schema";
 import { isProtectedPath } from "../safety/Policy";
 import { toolDiagnostics } from "./diagnostics";
@@ -75,7 +76,8 @@ export class ToolRunner {
       if (!r) continue;
       if (r.meta?.duration === undefined && Date.now() - started > 1500) r.meta = { ...r.meta, duration: ((Date.now() - started) / 1000).toFixed(1) + "s" };
       outcome.results.push(r);
-      if (r.output && r.output.length > this.resultMaxChars && a.tool !== "read") {
+      const saveAbove = a.tool === "run" && r.status === "ok" ? Math.min(this.resultMaxChars, OK_RUN_OUTPUT_MAX) : this.resultMaxChars;
+      if (r.output && r.output.length > saveAbove && a.tool !== "read") {
         r.fullOutputPath = await this.saveFullOutput(turn, a, r.output);
       }
       this.host.log(`${a.tool} ${a.attrs.path ?? a.attrs.pattern ?? a.attrs.title ?? ""} → ${r.status}${r.meta ? " " + JSON.stringify(r.meta) : ""}`);

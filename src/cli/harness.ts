@@ -11,7 +11,7 @@ import * as path from "path";
 import { NodeHost } from "../host/NodeHost";
 import { TurnEngine } from "../agent/TurnEngine";
 import { createSession, SessionData } from "../session/SessionData";
-import { Transcript } from "../transcript/Transcript";
+import { describeActions, describeResults, Transcript } from "../transcript/Transcript";
 
 const OUTBOX = ".whisper/outbox.md";
 const INBOX = ".whisper/inbox.md";
@@ -88,11 +88,11 @@ async function main(): Promise<void> {
       if (parsed.errors.length) console.log(`! parse errors: ${parsed.errors.join(" | ")}`);
       console.log(`← reply turn ${s.turn}: ${parsed.actions.length} actions [${parsed.actions.map((a) => a.tool).join(", ")}]`);
       const turn = s.turn;
-      await transcript.append({ session: s.id, kind: "actions", turn, text: parsed.actions.map((a) => `${a.tool} ${a.attrs.path ?? a.attrs.pattern ?? a.attrs.title ?? ""}`.trim()).join(", ") });
+      await transcript.append({ session: s.id, kind: "actions", turn, text: describeActions(parsed.actions) });
       const step = await engine.execute(s, parsed, s.pendingPrompt.length);
       if (step.kind !== "correction") {
         const rec = step.record;
-        await transcript.append({ session: s.id, kind: "results", turn, text: rec.results.map((r) => `${r.tool}${r.attrs.path ? " " + r.attrs.path : ""}=${r.status}`).join(", ") });
+        await transcript.append({ session: s.id, kind: "results", turn, text: describeResults(rec.results) });
         for (const d of rec.dialog ?? []) await transcript.append({ session: s.id, kind: "dialog", turn, text: `${d.from}: ${d.text}` });
         if (s.plan && rec.actions.some((a) => a.tool === "plan")) await transcript.append({ session: s.id, kind: "plan", turn, text: s.plan });
         for (const sug of (s.suggestions ?? []).filter((x) => x.turn === turn)) {
@@ -131,6 +131,7 @@ async function main(): Promise<void> {
       const s = await load();
       if (s.mode === "stateless") await engine.initialPrompt(s, await engine.gatherContext());
       const prompt = engine.answerPrompt(s, rest.join(" "), []);
+      await transcript.append({ session: s.id, kind: "answer", text: rest.join(" ") });
       s.pendingQuestion = undefined;
       await emit(s, prompt);
       return;

@@ -3,6 +3,9 @@ import { sanitizeSecrets, stripAnsi } from "../protocol/text";
 import { RunResult } from "./Host";
 
 const MAX_OUTPUT = 2_000_000;
+const TICK_MS = 500;
+/** Delší mezera mezi tiky = proces (i my) stál, typicky uspaný počítač. */
+const SUSPEND_GAP_MS = 5_000;
 
 /**
  * Ukončí celý strom procesů. Na Windows `child.kill()` zabije jen shell a osiřelý
@@ -66,28 +69,41 @@ export function spawnCommand(command: string, cwd: string, timeoutMs: number, pr
     };
     child.stdout.on("data", onData);
     child.stderr.on("data", onData);
-    const timer = setTimeout(() => {
-      timedOut = true;
-      terminate(child);
-    }, timeoutMs);
-    // probe: po probeMs proces ukončíme a ohlásíme, že stále běžel (= úspěšný start GUI/serveru)
-    const probe = probeMs
-      ? setTimeout(() => {
-          stillRunning = true;
-          terminate(child);
-        }, probeMs)
-      : undefined;
+    // Lhůty měříme „aktivním“ časem: když notebook usne (modern standby), časovače
+    // stojí a po probuzení by jinak timeout vypršel okamžitě, i když příkaz reálně
+    // běžel jen pár sekund. Mezera mezi tiky delší než SUSPEND_GAP_MS se nepočítá.
+    let active = 0;
+    let suspendedMs = 0;
+    let lastTick = Date.now();
+    const ticker = setInterval(() => {
+      const now = Date.now();
+      const gap = now - lastTick;
+      lastTick = now;
+      if (gap > SUSPEND_GAP_MS) {
+        suspendedMs += gap - TICK_MS;
+        active += TICK_MS;
+      } else {
+        active += gap;
+      }
+      // probe: po probeMs proces ukončíme a ohlásíme, že stále běžel (= úspěšný start GUI/serveru)
+      if (probeMs && !stillRunning && !timedOut && active >= probeMs) {
+        stillRunning = true;
+        terminate(child);
+      } else if (!timedOut && !stillRunning && active >= timeoutMs) {
+        timedOut = true;
+        terminate(child);
+      }
+    }, TICK_MS);
     const onAbort = () => {
       interrupted = true;
       terminate(child);
     };
     signal?.addEventListener("abort", onAbort, { once: true });
     const finish = (exit: number, extra = "") => {
-      clearTimeout(timer);
-      if (probe) clearTimeout(probe);
+      clearInterval(ticker);
       signal?.removeEventListener("abort", onAbort);
       const output = sanitizeSecrets(stripAnsi(extra + chunks.join(""))).trim();
-      resolve({ output, exit, timedOut, stillRunning, interrupted, durationMs: Date.now() - started });
+      resolve({ output, exit, timedOut, stillRunning, interrupted, durationMs: Date.now() - started - suspendedMs, suspendedMs });
     };
     child.on("error", (err) => finish(-1, `Failed to start: ${err.message}\n`));
     child.on("close", (code) => finish(code ?? -1));

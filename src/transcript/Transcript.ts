@@ -26,6 +26,59 @@ export interface TranscriptEvent {
   data?: unknown;
 }
 
+type ActionLike = { tool: string; attrs: Record<string, string>; body?: string };
+type ResultLike = { tool: string; attrs: Record<string, string>; status: string; output?: string; meta?: Record<string, string | number> };
+
+/** Krátký popis akcí kola (pro panel i transkript). */
+export function describeActions(actions: ActionLike[]): string {
+  return actions
+    .filter((a) => a.tool !== "status")
+    .map((a) => {
+      const target = a.attrs.path ?? a.attrs.pattern ?? a.attrs.title ?? (a.tool === "run" ? (a.body ?? "").trim().split("\n")[0].slice(0, 80) : "");
+      return target ? `${a.tool} ${target}` : a.tool;
+    })
+    .join(", ");
+}
+
+/** První řádek výstupu, který něco říká (přeskočí hlavičky npm a prázdné řádky). */
+function firstTellingLine(output: string | undefined): string {
+  if (!output) return "";
+  const marked = output.match(/^\[(timed out[^\]]*|INTERRUPTED[^\]]*)\]/m);
+  if (marked) return marked[1].slice(0, 160);
+  const lines = output
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith(">") && !l.startsWith("["));
+  const pick = lines.find((l) => /^not ok\b|error|fail|exception|traceback|not found|cannot|unable|denied|assert/i.test(l)) ?? lines[0] ?? "";
+  return pick.slice(0, 160);
+}
+
+/**
+ * Popis výsledků kola: neúspěchy s důvodem (aby šlo z transkriptu poznat, co a proč selhalo),
+ * úspěchy jen souhrnně.
+ */
+export function describeResults(results: ResultLike[]): string {
+  const bad = results.filter((r) => r.status !== "ok");
+  const okList = results
+    .filter((r) => r.status === "ok")
+    .map((r) => {
+      if (r.tool === "run") {
+        const cmd = String(r.meta?.command ?? "").split("\n")[0].slice(0, 60);
+        return `run \`${cmd}\`${r.meta?.exit === "running" ? " (probe: still running)" : ""}${r.meta?.screenshot ? " +screenshot" : ""}`;
+      }
+      return `${r.tool}${r.attrs.path ? " " + r.attrs.path : ""}${r.meta?.screenshot ? " +screenshot" : ""}`;
+    });
+  const parts: string[] = [];
+  if (okList.length) parts.push(`${okList.length} ok (${okList.join(", ")})`);
+  for (const r of bad) {
+    const target = r.attrs.path ?? (r.tool === "run" ? "`" + String(r.meta?.command ?? "").slice(0, 80) + "`" : "");
+    const why = firstTellingLine(r.output);
+    const exit = r.meta?.exit !== undefined ? ` exit=${r.meta.exit}` : "";
+    parts.push(`${r.tool}${target ? " " + target : ""} → ${r.status}${exit}${why ? `: ${why}` : ""}`);
+  }
+  return `${results.length} výsledků${bad.length ? `, ${bad.length} neúspěšných` : ""}: ${parts.join("; ")}`;
+}
+
 const FILE = ".whisper/transcript.jsonl";
 
 /** Celý průběh práce agenta v .whisper/transcript.jsonl (append-only, přes všechna sezení). */
@@ -83,10 +136,11 @@ export class Transcript {
           lines.push(`TASK: ${t.slice(0, 400)}`);
           break;
         case "actions":
-          lines.push(`turn ${e.turn}: actions ${t.slice(0, 300)}`);
+          lines.push(`turn ${e.turn}: actions ${t.slice(0, 500)}`);
           break;
         case "results":
-          lines.push(`turn ${e.turn}: results ${t.slice(0, 300)}`);
+          // neúspěchy jsou pro analýzu nejdůležitější, nechat je celé
+          lines.push(`turn ${e.turn}: results ${t.slice(0, /neúspěšných/.test(t) ? 900 : 300)}`);
           break;
         case "status":
           lines.push(`status: ${t.slice(0, 200)}`);
@@ -113,7 +167,7 @@ export class Transcript {
           lines.push(`suggestion ${t.slice(0, 200)}`);
           break;
         case "done":
-          lines.push(`DONE: ${t.slice(0, 400)}`);
+          lines.push(`DONE: ${t.slice(0, 1200)}`);
           break;
         case "error":
           lines.push(`error: ${t.slice(0, 200)}`);

@@ -31,12 +31,15 @@ export async function toolRun(host: Host, attrs: Record<string, string>, body: s
   const r = await running;
   const shotNote = shot ? `\n[${shot.output}]` : "";
   const attachments = shot?.attachments;
+  const suspended = r.suspendedMs && r.suspendedMs > 5000 ? `[note: the computer was asleep/suspended for ${Math.round(r.suspendedMs / 1000)}s while this command ran; that time is not counted in duration or timeout]
+` : "";
+  if (suspended) meta.suspended = Math.round(r.suspendedMs! / 1000) + "s";
   if (r.interrupted) {
     return {
       tool: "run",
       attrs,
       status: "error",
-      output: `[INTERRUPTED by the user after ${(r.durationMs / 1000).toFixed(1)}s; the process was killed. Partial output follows.]\n` + (r.output || "(no output)"),
+      output: suspended + `[INTERRUPTED by the user after ${(r.durationMs / 1000).toFixed(1)}s; the process was killed. Partial output follows.]\n` + (r.output || "(no output)"),
       meta: { ...meta, exit: "interrupted", duration: (r.durationMs / 1000).toFixed(1) + "s" },
       attachments,
     };
@@ -46,7 +49,7 @@ export async function toolRun(host: Host, attrs: Record<string, string>, body: s
       tool: "run",
       attrs,
       status: "ok",
-      output: `[probe: process was still running after ${probeMs! / 1000}s, so it started successfully; it was then stopped by the probe]${shotNote}\n` + (r.output || "(no output)"),
+      output: suspended + `[probe: process was still running after ${probeMs! / 1000}s, so it started successfully; it was then stopped by the probe]${shotNote}\n` + (r.output || "(no output)"),
       meta: { ...meta, exit: "running", duration: (r.durationMs / 1000).toFixed(1) + "s", ...(shot?.meta?.file ? { screenshot: shot.meta.file } : {}) },
       attachments,
     };
@@ -56,6 +59,7 @@ export async function toolRun(host: Host, attrs: Record<string, string>, body: s
     attrs,
     status: r.exit === 0 && !r.timedOut ? "ok" : "error",
     output:
+      suspended +
       (r.timedOut ? `[timed out after ${timeoutMs / 1000}s and was killed; for GUI apps or servers use probe="N" instead]\n` : "") +
       (probeMs && r.exit !== 0 ? `[probe: process exited with code ${r.exit} before ${probeMs / 1000}s elapsed, so it did NOT start properly]\n` : "") +
       (shotNote ? shotNote.trim() + "\n" : "") +

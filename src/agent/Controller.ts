@@ -24,7 +24,7 @@ import { Suggestion } from "../session/SessionData";
 import { loadSkills, saveSkill } from "../skills/Skills";
 import { PLAN_FILE } from "../tools/ToolRunner";
 import { ChangeListener } from "../tools/ToolRunner";
-import { Transcript, TranscriptEvent } from "../transcript/Transcript";
+import { describeActions, describeResults, Transcript, TranscriptEvent } from "../transcript/Transcript";
 import { cfg, toRel, workspaceRoot } from "../util";
 import { ApprovalService } from "./Approvals";
 import { RULES_FILE, TurnEngine } from "./TurnEngine";
@@ -701,17 +701,3 @@ function decodeEntities(s: string): string {
   return s.replace(/&(amp|lt|gt|quot|#39);/g, (_, e: string) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'" })[e] ?? _);
 }
 
-function describeActions(actions: { tool: string; attrs: Record<string, string>; body?: string }[]): string {
-  return actions
-    .filter((a) => a.tool !== "status")
-    .map((a) => {
-      const target = a.attrs.path ?? a.attrs.pattern ?? a.attrs.title ?? (a.tool === "run" ? (a.body ?? "").trim().split("\n")[0].slice(0, 80) : "");
-      return target ? `${a.tool} ${target}` : a.tool;
-    })
-    .join(", ");
-}
-
-function describeResults(results: { tool: string; attrs: Record<string, string>; status: string; meta?: Record<string, string | number> }[]): string {
-  const bad = results.filter((r) => r.status !== "ok").length;
-  return `${results.length} výsledků${bad ? `, ${bad} neúspěšných` : ""}: ` + results.map((r) => `${r.tool}${r.attrs.path ? " " + r.attrs.path : ""}=${r.status}`).join(", ");
-}
