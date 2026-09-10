@@ -35,15 +35,20 @@ jednu po druhé. Zamítnutí se modelu nahlásí v dalším kole.
 
 ## Panel
 
-Průběh se odvíjí nahoře jako chat (zadání, akce, výsledky, otázky, plán, návrhy),
-vstup je dole. Stav je vidět v barevném banneru: čekám na odpověď (žlutý, pulzuje),
-provádím akce, model se ptá, hotovo. Během čekání můžete psát poznámky; přiloží se
+Celý panel je jeden souvislý proud odshora dolů jako v GitHub Copilotu: zadání, plán,
+akce, výsledky, otázky, schvalování, změny ke schválení, návrhy a nakonec aktuální stav.
+Nic se nepřekrývá a nic nevyskakuje nad průběh, roluje se jen tento proud; pevný je jen
+úzký horní pruh a vstupní pole dole. Během čekání můžete psát poznámky, přiloží se
 k dalšímu promptu.
 
-**Schvalování příkazů** se dělá v panelu, ne v dialozích: karta s tlačítky *Povolit*,
-*Zamítnout* a *Povolit vždy (regex)*, které uloží regulární výraz do
-`whisper.run.allowPatterns`. Přepínač *auto / ptát se* v horní liště (nebo `/auto`)
-přepne `whisper.run.approval`; denylist platí vždy.
+Stav běhu je poslední karta v proudu, takže je vždy na očích: čekám na odpověď (žlutá,
+pulzuje), provádím akce (s běžící akcí, časem a tlačítkem *Přerušit*), model se ptá, hotovo.
+
+**Schvalování příkazů** se dělá v proudu, ne v dialozích: karta s tlačítky *Povolit*,
+*Zamítnout* a *Povolit vždy (regex)*; pole na regulární výraz se ukáže až po kliknutí.
+V horní liště je jediná pilulka se stavem schvalování a počtem výjimek. Kliknutím se
+rozbalí panel s přepínačem *ptát se / auto*, podrobnosti o výjimkách jsou schované pod
+rozklikávací položkou.
 
 **Režim PLAN**: `/plan zadání` vynutí, aby model nejdřív poslal hierarchický
 checklist (`.whisper/plan.md`) a průběžně ho udržoval (odškrtává, přidává objevené

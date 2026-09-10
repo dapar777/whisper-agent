@@ -148,6 +148,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
     --mono: var(--vscode-editor-font-family, Consolas, monospace);
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { height: 100%; margin: 0; }
   body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--fg); background: var(--bg); display: flex; flex-direction: column; }
   button { font: inherit; border: 1px solid var(--border); background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); padding: 4px 10px; border-radius: 6px; cursor: pointer; }
@@ -162,18 +163,23 @@ export class SidebarView implements vscode.WebviewViewProvider {
   pre { margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; background: var(--vscode-textCodeBlock-background, rgba(128,128,128,.12)); padding: 6px 8px; border-radius: 6px; }
 
   /* horní lišta */
-  .topbar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  .topbar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-wrap: nowrap; overflow: hidden; }
+  .topbar .pill { flex: 0 0 auto; }
+  .topbar .spacer { min-width: 4px; }
+  @media (max-width: 380px) { .logo span:last-child { display: none; } }
   .logo { display: flex; align-items: center; gap: 6px; font-weight: 600; letter-spacing: .2px; }
   .logo .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
   .spacer { flex: 1; }
   .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
   .pill.on { border-color: var(--accent); color: var(--accent); }
 
-  /* stavový banner */
-  .banner { margin: 10px 10px 0; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; gap: 6px; }
+  /* stavový banner: plave na konci proudu, ne nad ním */
+  .banner { margin: 2px 0 4px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; gap: 4px; }
+  .banner .title { line-height: 1.35; }
   .banner .title { display: flex; align-items: center; gap: 8px; font-weight: 600; }
   .banner .sub { color: var(--muted); font-size: 12px; }
-  .banner .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+  .banner .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; min-width: 0; }
+  .banner .btns button { flex: 0 1 auto; max-width: 100%; }
   .banner.waiting { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, var(--card)); }
   .banner.executing { border-color: var(--info); }
   .banner.asking { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
@@ -184,9 +190,21 @@ export class SidebarView implements vscode.WebviewViewProvider {
   .banner.done .beacon { background: var(--ok); animation: none; }
   @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 0%, transparent); opacity: 1 } 50% { opacity: .35 } }
 
-  /* chat */
-  #chat { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-  .msg { max-width: 100%; border-radius: 10px; padding: 8px 10px; border: 1px solid var(--border); background: var(--card); font-size: 12.5px; line-height: 1.45; }
+  /* chat: jediná rolovací oblast, vše ostatní je uvnitř ní */
+  #chat { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  #stream { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-width: 0; }
+  #stream > * { max-width: 100%; }
+  /* karta uvnitř proudu (změny, návrhy) */
+  .card { padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); font-size: 12px; }
+  .card .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 2px 0; min-width: 0; }
+  .card .path { flex: 1; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* skládací panel pod lištou (výjimky schvalování) */
+  .sheet { margin: 0 10px 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+  .sheet .title { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .sheet summary { cursor: pointer; }
+  .sheet .sub { color: var(--muted); font-size: 11px; }
+  .sheet .btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .msg { max-width: 100%; min-width: 0; border-radius: 10px; padding: 8px 10px; border: 1px solid var(--border); background: var(--card); font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; }
   .msg .head { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
   .msg .head b { color: var(--fg); }
   .msg.user { align-self: flex-end; background: color-mix(in srgb, var(--accent) 18%, var(--card)); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); max-width: 92%; }
@@ -198,9 +216,10 @@ export class SidebarView implements vscode.WebviewViewProvider {
   .msg.plan { border-left: 3px solid var(--warn); }
   .msg.suggest { border-left: 3px solid var(--vscode-charts-purple, #a371f7); }
   .msg.approval { border: 1px solid var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--card)); }
-  .line { color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 6px; padding: 0 4px; }
+  .line { color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 6px; padding: 0 4px; min-width: 0; flex-wrap: wrap; }
   .line .btns { margin-left: auto; display: flex; gap: 4px; }
-  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+  .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chip { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border-radius: 5px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
   .chip.err { background: var(--err); color: #fff; }
   .chip.ok { opacity: .85; }
@@ -211,7 +230,8 @@ export class SidebarView implements vscode.WebviewViewProvider {
   .check li.l1 { padding-left: 16px; } .check li.l2 { padding-left: 32px; } .check li.l3 { padding-left: 48px; }
   .check .box { font-family: var(--mono); color: var(--muted); }
   .check li.done { color: var(--muted); text-decoration: line-through; }
-  .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; min-width: 0; }
+  .btns > button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
   .badge { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; padding: 1px 6px; border-radius: 4px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
 
   /* review */
@@ -219,8 +239,11 @@ export class SidebarView implements vscode.WebviewViewProvider {
   .review .row { display: flex; gap: 6px; align-items: center; padding: 2px 0; }
   .review .path { flex: 1; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .sugItem { border-top: 1px solid var(--border); padding: 4px 0; }
-  .sugItem summary { display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; }
+  .sugItem { border-top: 1px solid var(--border); padding: 5px 0; }
+  .sugItem summary { display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; min-width: 0; }
+  .sugItem summary .t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sugItem summary .badge { flex: 0 0 auto; white-space: nowrap; }
+  .sugItem summary .btns { flex: 0 0 auto; margin: 0; flex-wrap: nowrap; }
   .sugItem summary::-webkit-details-marker { display: none; }
   .sugItem summary::before { content: "▸"; color: var(--muted); font-size: 10px; }
   .sugItem[open] summary::before { content: "▾"; }
@@ -250,7 +273,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
 </style></head>
 <body>
   <div class="topbar">
-    <div class="logo"><span class="dot"></span> Whisper</div>
+    <div class="logo"><span class="dot"></span><span>Whisper</span></div>
     <span id="turnPill" class="pill" hidden></span>
     <span id="planPill" class="pill" hidden>PLAN</span>
     <div class="spacer"></div>
@@ -260,27 +283,28 @@ export class SidebarView implements vscode.WebviewViewProvider {
     <button id="menuSettings" class="ghost small" title="Otevřít nastavení Whisperu">⚙</button>
   </div>
 
-  <div id="exceptions" class="banner" hidden>
-    <div class="title">Schvalování příkazů</div>
-    <div class="btns"><button id="modeAsk" class="small">ptát se</button><button id="modeAuto" class="small">auto (bez dotazů)</button><span class="sub">denylist platí vždy</span></div>
-    <div class="sub">Výjimky: regulární výrazy na celý příkaz, které se spouštějí bez dotazu</div>
-    <div id="patterns"></div>
-    <div class="btns"><input id="newPattern" type="text" placeholder="^npm (test|run lint)\\b"><button id="addPatternWs" class="small">Přidat (projekt)</button><button id="addPatternGlobal" class="small">Přidat (globálně)</button></div>
+  <div id="exceptions" class="sheet" hidden>
+    <div class="title">Schvalování příkazů<span class="spacer"></span><button id="exClose" class="ghost small" title="Zavřít">✕</button></div>
+    <div class="btns"><button id="modeAsk" class="small">ptát se</button><button id="modeAuto" class="small">auto (bez dotazů)</button><span class="sub">zakázané příkazy platí vždy</span></div>
+    <details id="exDetails">
+      <summary class="sub">Výjimky: příkazy povolené regulárním výrazem <span id="exCount"></span></summary>
+      <div id="patterns"></div>
+      <div class="btns"><input id="newPattern" type="text" placeholder="^npm (test|run lint)\\b"><button id="addPatternWs" class="small">Přidat (projekt)</button><button id="addPatternGlobal" class="small">Přidat (globálně)</button></div>
+    </details>
   </div>
 
-  <div id="banner" class="banner" hidden>
-    <div class="title"><span class="beacon"></span><span id="bannerTitle"></span></div>
-    <div id="bannerSub" class="sub"></div>
-    <div id="bannerBtns" class="btns"></div>
-  </div>
-
-  <div id="chat"></div>
-
-  <div id="review" class="review" hidden></div>
-
-  <div id="suggestions" class="review" hidden>
-    <div class="row"><b>Návrhy ke schválení (<span id="sugCount"></span>)</b><span class="spacer"></span><button id="sugToggle" class="ghost small">▾</button><button class="small primary" id="sugAcceptAll">Přijmout vše</button><button class="small" id="sugRejectAll">Zamítnout vše</button></div>
-    <div id="sugList"></div>
+  <div id="chat">
+    <div id="stream"></div>
+    <div id="review" class="card" hidden></div>
+    <div id="suggestions" class="card" hidden>
+      <div class="row"><button id="sugToggle" class="ghost small" title="Sbalit/rozbalit">▾</button><b>Návrhy (<span id="sugCount"></span>)</b><span class="spacer"></span><button class="small primary" id="sugAcceptAll" title="Přijmout všechny návrhy">✓ vše</button><button class="small" id="sugRejectAll" title="Zamítnout všechny návrhy">✗ vše</button></div>
+      <div id="sugList"></div>
+    </div>
+    <div id="banner" class="banner" hidden>
+      <div class="title"><span class="beacon"></span><span id="bannerTitle"></span></div>
+      <div id="bannerSub" class="sub"></div>
+      <div id="bannerBtns" class="btns"></div>
+    </div>
   </div>
 
   <div id="composer" class="composer">
@@ -351,9 +375,11 @@ export class SidebarView implements vscode.WebviewViewProvider {
   function render() {
     const s = state.session;
     const active = s && s.state !== "idle";
-    $("turnPill").hidden = !active; if (active) $("turnPill").textContent = "kolo " + s.turn;
+    $("turnPill").hidden = !active; if (active) { $("turnPill").textContent = "kolo " + s.turn; $("turnPill").title = "Číslo kola"; }
     $("planPill").hidden = !(active && s.planMode);
-    $("modeBtn").textContent = (state.approvals.mode === "auto" ? "auto" : "ptát se") + " · výjimky " + ((state.approvals.patterns || []).length);
+    const pat = (state.approvals.patterns || []).length;
+    $("modeBtn").textContent = (state.approvals.mode === "auto" ? "auto" : "ptát se") + (pat ? " · " + pat : "");
+    $("modeBtn").title = "Schvalování příkazů" + (pat ? " · výjimek: " + pat : "") + " (klikněte pro nastavení)";
     $("modeBtn").className = "pill" + (state.approvals.mode === "auto" ? " on" : "");
     renderExceptions();
     renderSuggestions();
@@ -394,9 +420,10 @@ export class SidebarView implements vscode.WebviewViewProvider {
     }
     for (const it of state.items) parts.push(renderItem(it, s));
     for (const a of state.approvals.pending) parts.push(renderApproval(a));
-    chat.innerHTML = parts.join("");
+    $("stream").innerHTML = parts.join("");
     for (const x of chat.querySelectorAll("[data-act]")) x.onclick = onAct;
-    if (stick || state.items.length !== lastCount) chat.scrollTop = chat.scrollHeight;
+    // banner i karty jsou uvnitř #chat a dorenderují se níž, proto rolujeme až po jejich vykreslení
+    if (stick || state.items.length !== lastCount) requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; });
     lastCount = state.items.length;
 
     // review
@@ -545,6 +572,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
   $("send").onclick = submit;
   $("slash").onclick = () => { if (!popup.hidden) { popup.hidden = true; return; } sel = 0; showPopup("", true); input.focus(); };
   $("modeBtn").onclick = () => { $("exceptions").hidden = !$("exceptions").hidden; };
+  $("exClose").onclick = () => { $("exceptions").hidden = true; };
   $("modeAsk").onclick = () => send("setMode", { mode: "ask" });
   $("modeAuto").onclick = () => send("setMode", { mode: "auto" });
   const addPattern = (global) => { const v = $("newPattern").value.trim(); if (!v) return; send("addPattern", { text: v, approve: global }); $("newPattern").value = ""; };
@@ -569,7 +597,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
       const items = pending.filter((x) => (x.scope || "project") === scope);
       if (!items.length) return "";
       return '<div class="sub" style="margin-top:6px"><b>' + label + "</b></div>" + items.map((x) =>
-        '<details class="sugItem"><summary><span class="badge">' + esc(x.kind) + "</span> " + (x.update ? '<span class="badge" title="úprava existující položky">upravuje ' + esc(x.update) + "</span> " : "") + esc(x.title) +
+        '<details class="sugItem"><summary><span class="badge">' + esc(x.kind) + "</span>" + (x.update ? '<span class="badge" title="úprava existující položky">upravuje ' + esc(x.update) + "</span>" : "") + '<span class="t" title="' + esc(x.title) + '">' + esc(x.title) + "</span>" +
         '<span class="btns" style="margin:0 0 0 auto"><button class="small primary" data-sug="' + esc(x.id) + '" data-ok="1" title="Přijmout">✓</button><button class="small" data-sug="' + esc(x.id) + '" data-ok="0" title="Zamítnout">✗</button></span></summary><pre>' + esc(x.body) + "</pre></details>").join("");
     }).join("");
     for (const b of list.querySelectorAll("[data-sug]")) b.onclick = (e) => { e.preventDefault(); e.stopPropagation(); send("suggestion", { id: b.dataset.sug, approve: b.dataset.ok === "1" }); };
@@ -581,6 +609,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
     const list = state.approvals.patterns || [];
     $("patterns").innerHTML = list.length ? list.map((p) => '<div class="line"><span class="cmd">' + esc(p.pattern) + '</span><span class="badge">' + (p.scope === "global" ? "globální" : "projekt") + '</span><span class="btns"><button class="ghost small" data-rm="' + esc(p.pattern) + '" data-global="' + (p.scope === "global") + '">✗</button></span></div>').join("") : '<div class="sub">zatím žádné výjimky</div>';
     for (const b of $("patterns").querySelectorAll("[data-rm]")) b.onclick = () => send("removePattern", { text: b.dataset.rm, approve: b.dataset.global === "true" });
+    $("exCount").textContent = list.length ? "· " + list.length : "";
   }
   $("menuSuggest").onclick = () => send("suggest");
   $("menuTranscript").onclick = () => send("transcript");
