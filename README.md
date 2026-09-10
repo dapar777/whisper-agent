@@ -70,9 +70,11 @@ ne jako chyba. `<ask options="A|B">` nabízí odpovědi jako tlačítka (i více
 globy nebo celou codebase (`<bundle all="true"/>`) jako jeden strukturovaný textový soubor
 (číslované řádky, sekce na soubor, obsah na začátku; binární a obří soubory se vynechají,
 `.gitignore` se respektuje). Svazek se uloží do `.whisper/out/bundle-<kolo>-<n>.txt` a do
-schránky se dá **nejdřív jako text** a pak teprve prompt: `Ctrl+V` vloží prompt, svazek vezmete
-z historie schránky (`Win+V`); v chatu se dlouhý text sám změní v přílohu. Prompt modelu říká, že
-svazek je přiložen, a co dělat, když ho nevidí.
+schránky se dá podle `whisper.bundle.delivery`: `history` (výchozí) = **nejdřív jako text** a pak
+teprve prompt, `Ctrl+V` vloží prompt a svazek vezmete z historie schránky (`Win+V`); `file` = do
+schránky jdou soubory `prompt-N.txt` + `bundle-N.txt` a jedno `Ctrl+V` v chatu připojí obě přílohy.
+Svazek je vždy soubor `*.txt` (jiné formáty chaty často odmítají). Prompt modelu říká, že svazek je
+přiložen, a co dělat, když ho nevidí.
 
 **Odpověď v souboru** (`whisper.reply.watchDir`): kromě schránky lze odpověď modelu doručit
 jako **nový soubor** ve sledované složce, třeba ve složce stahování prohlížeče. Sledují se jen

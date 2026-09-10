@@ -57,7 +57,8 @@ export class ClipboardBridge implements vscode.Disposable {
     // PŘED promptem, takže Ctrl+V vloží prompt a z historie se vezme svazek; obrázky jdou jako soubory
     const textual = attachments.filter((a) => /\.(txt|md)$/i.test(a));
     const binary = attachments.filter((a) => !/\.(txt|md)$/i.test(a));
-    if (textual.length && binary.length === 0 && !(threshold > 0 && text.length > threshold)) {
+    const delivery = cfg<"history" | "file">("bundle.delivery", "history");
+    if (delivery === "history" && textual.length && binary.length === 0 && !(threshold > 0 && text.length > threshold)) {
       for (const a of textual) {
         try {
           const content = await readText(vscode.Uri.joinPath(workspaceRoot(), a));
@@ -75,7 +76,8 @@ export class ClipboardBridge implements vscode.Disposable {
       try {
         const uri = vscode.Uri.joinPath(workspaceRoot(), ".whisper", `prompt-${turn ?? "x"}.txt`);
         await writeText(uri, text);
-        const files = [uri.fsPath, ...attachments.map((a) => vscode.Uri.joinPath(workspaceRoot(), a).fsPath)];
+        // chaty berou jako přílohu jen některé formáty: textové přílohy jdou vždy jako *.txt
+        const files = [uri.fsPath, ...(await Promise.all(attachments.map((a) => this.asTxt(a))))];
         await setClipboardFiles(files);
         return "file";
       } catch {
@@ -89,6 +91,19 @@ export class ClipboardBridge implements vscode.Disposable {
     if (await this.owner.take(finalText)) return "text";
     await vscode.env.clipboard.writeText(finalText);
     return "text";
+  }
+
+  /** Absolutní cesta přílohy; textový soubor bez přípony .txt se zkopíruje do .txt (chat jiné formáty nebere). */
+  private async asTxt(rel: string): Promise<string> {
+    const uri = vscode.Uri.joinPath(workspaceRoot(), rel);
+    if (/\.(png|jpe?g|gif|webp|txt)$/i.test(rel)) return uri.fsPath;
+    try {
+      const copy = vscode.Uri.file(uri.fsPath.replace(/\.[^.\\/]+$/, "") + ".txt");
+      await vscode.workspace.fs.copy(uri, copy, { overwrite: true });
+      return copy.fsPath;
+    } catch {
+      return uri.fsPath;
+    }
   }
 
   /** Jednorázové přečtení schránky (po ztrátě vlastnictví); odpověď se převezme hned. */

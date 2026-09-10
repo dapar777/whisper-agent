@@ -67,6 +67,14 @@
           "type": "number", "default": 0,
           "description": "Jen Windows: prompt delší než N znaků se uloží jako .txt a do schránky se dá soubor, který chat po Ctrl+V připojí jako přílohu. 0 = vždy text."
         },
+        "whisper.bundle.delivery": {
+          "type": "string", "enum": ["history", "file"], "default": "history",
+          "enumDescriptions": [
+            "Svazek jde do schránky jako text před promptem: Ctrl+V vloží prompt, svazek se vezme z historie schránky (Win+V).",
+            "Jen Windows: do schránky se dají soubory prompt-N.txt a bundle-N.txt; jedno Ctrl+V v chatu připojí obě přílohy."
+          ],
+          "description": "Jak předat svazek souborů (<bundle>) do chatu. Svazek je vždy soubor *.txt v .whisper/out/."
+        },
         "whisper.reply.watchDir": {
           "type": "string", "default": "",
           "description": "Složka, ve které se čeká na odpověď modelu jako NOVÝ soubor (např. složka stahování prohlížeče). Prázdné = jen schránka. Soubor se převezme, až se přestane měnit, a ověří stejně jako text ze schránky."
