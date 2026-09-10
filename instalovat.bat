@@ -1,20 +1,42 @@
 @echo off
-setlocal EnableExtensions EnableDelayedExpansion
+setlocal EnableExtensions DisableDelayedExpansion
 title Whisper Agent - instalace do VS Code
 echo.
 echo  ===== Whisper Agent - instalace rozsireni do VS Code =====
 echo.
 
-rem --- 1) najit VSIX vedle tohoto souboru (nezalezi, odkud se bat spousti) ---
 set "DIR=%~dp0"
 set "VSIX="
-for /f "delims=" %%F in ('dir /b /o-d "%DIR%whisper-agent-*.vsix" 2^>nul') do (
-    if not defined VSIX set "VSIX=%DIR%%%F"
+
+rem --- 0) soubor pretazeny na bat nebo zadany jako parametr ---
+if not "%~1"=="" (
+    if /i "%~x1"==".vsix" if exist "%~1" set "VSIX=%~f1"
 )
+
+rem --- 1) hledani balicku: slozka batu, aktualni slozka, Stazene soubory ---
+if not defined VSIX call :find "%DIR%"
+if not defined VSIX call :find "%CD%\"
+if not defined VSIX call :find "%USERPROFILE%\Downloads\"
+if not defined VSIX call :find "%USERPROFILE%\Desktop\"
+
 if not defined VSIX (
-    echo  CHYBA: vedle tohoto souboru neni zadny soubor whisper-agent-*.vsix.
-    echo  Stahnete ho z https://github.com/dapar777/whisper-agent ^(soubor whisper-agent-0.1.0.vsix^)
-    echo  a dejte ho do stejne slozky jako tento bat: %DIR%
+    echo  CHYBA: nenasel jsem zadny soubor *.vsix.
+    echo.
+    echo  Hledal jsem v:
+    echo    - %DIR%
+    echo    - %CD%\
+    echo    - %USERPROFILE%\Downloads\
+    echo    - %USERPROFILE%\Desktop\
+    echo.
+    echo  Obsah slozky batu ^(%DIR%^):
+    dir /b /a-d "%DIR%" 2>nul
+    echo.
+    echo  Tipy:
+    echo    - Pokud jste bat spustili primo z otevreneho ZIPu, Windows ho rozbalil sam do docasne
+    echo      slozky bez VSIX. Nejdriv ZIP cely rozbalte ^(prave tlacitko ^> Extrahovat vse^).
+    echo    - Soubor musi mit priponu .vsix ^(ne .zip ani .txt^); prohlizec ho nekdy prejmenuje.
+    echo    - Nebo VSIX na tento bat pretahnete mysi, pripadne ho dejte do stejne slozky.
+    echo    - Stazeni: https://github.com/dapar777/whisper-agent ^(whisper-agent-0.1.0.vsix^)
     goto :fail
 )
 echo  Balicek:  %VSIX%
@@ -45,7 +67,7 @@ echo  Instaluji...
 call "%CODE%" --install-extension "%VSIX%" --force
 if errorlevel 1 (
     echo.
-    echo  CHYBA: instalace selhala ^(kod !errorlevel!^). Zkuste zavrit VS Code a spustit bat znovu,
+    echo  CHYBA: instalace selhala ^(kod %errorlevel%^). Zkuste zavrit VS Code a spustit bat znovu,
     echo  nebo ve VS Code: Extensions ^(Ctrl+Shift+X^) ^> menu "..." ^> "Install from VSIX..." a vyberte
     echo  %VSIX%
     goto :fail
@@ -67,6 +89,14 @@ echo  Co dal: restartujte VS Code ^(nebo Ctrl+Shift+P ^> "Developer: Reload Wind
 echo  Panel Whisper je v pravem postrannim panelu; novy ukol: Ctrl+Alt+W.
 echo.
 pause
+exit /b 0
+
+rem --- najde VSIX ve slozce %1 (nejdriv whisper-agent*.vsix, pak libovolny *.vsix); bere posledni podle nazvu = nejvyssi verze ---
+:find
+set "D=%~1"
+if not exist "%D%" exit /b 0
+for %%F in ("%D%whisper-agent*.vsix") do if exist "%%~fF" set "VSIX=%%~fF"
+if not defined VSIX for %%F in ("%D%*.vsix") do if exist "%%~fF" set "VSIX=%%~fF"
 exit /b 0
 
 :fail
