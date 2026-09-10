@@ -83,6 +83,14 @@
           "type": "string", "default": "*.{md,txt}",
           "description": "Glob na název souboru s odpovědí ve složce whisper.reply.watchDir."
         },
+        "whisper.prompt.header": {
+          "type": "string", "default": "", "editPresentation": "multilineText",
+          "description": "Text vložený před každý prompt do schránky (např. pokyn pro chat). Zástupné znaky: {turn}, {project}."
+        },
+        "whisper.prompt.footer": {
+          "type": "string", "default": "", "editPresentation": "multilineText",
+          "description": "Text připojený za každý prompt do schránky. Zástupné znaky: {turn}, {project}."
+        },
         "whisper.prompt.maxChars": { "type": "number", "default": 60000, "description": "Maximální délka promptu; výsledky, které se nevejdou, se odloží a model si je vyžádá znovu." },
         "whisper.prompt.resultMaxChars": { "type": "number", "default": 12000, "description": "Maximální délka výstupu příkazu/hledání v promptu (obsah souborů z <read> se nezkracuje)." },
         "whisper.prompt.treeMaxEntries": { "type": "number", "default": 200 },

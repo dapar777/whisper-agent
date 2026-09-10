@@ -144,6 +144,8 @@ Při novém úkolu se plán z předchozího sezení odloží: hotový se smaže,
 - `whisper.clipboard.fileAboveChars` – jen Windows: prompt delší než N znaků jde do
   schránky jako soubor `.txt` (vloží se jako příloha). Výchozí 0 = vždy text; na
   claude.ai se dlouhý text stejně sám změní v přílohu, takže to obvykle není třeba.
+- `whisper.prompt.header`, `whisper.prompt.footer` – text vložený před a za každý prompt
+  (např. „Odpověz stručně“ nebo pokyn pro konkrétní chat); zástupné znaky `{turn}`, `{project}`.
 - `whisper.prompt.maxChars`, `whisper.prompt.resultMaxChars` – limity délky. Dlouhý výstup
   příkazu, který skončil s kódem 0, se posílá jen jako závěr (poslední ~4000 znaků), celý
   výstup je v `.whisper/out/`. Neúspěšné příkazy se posílají celé (začátek + konec).

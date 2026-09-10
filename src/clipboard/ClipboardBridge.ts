@@ -1,7 +1,7 @@
 import { execFile } from "child_process";
 import * as vscode from "vscode";
 import { looksLikeReply, normalizeClipboard } from "../protocol/replyDetect";
-import { cfg, readText, workspaceRoot, writeText } from "../util";
+import { cfg, readText, workspaceName, workspaceRoot, writeText } from "../util";
 import { ClipboardOwner } from "./ClipboardOwner";
 import { FileReplyWatcher } from "./FileReplyWatcher";
 
@@ -16,6 +16,17 @@ function setClipboardFiles(fsPaths: string[]): Promise<void> {
       (err) => (err ? reject(err) : resolve()),
     );
   });
+}
+
+/**
+ * Uživatelská hlavička a patička promptu (whisper.prompt.header / footer), např. „Odpověz česky“
+ * nebo pokyn pro konkrétní chat. Zástupné znaky: {turn}, {project}. Prázdné = nic.
+ */
+export function decoratePrompt(text: string, turn?: number): string {
+  const fill = (s: string) => s.replace(/\{turn\}/g, String(turn ?? "")).replace(/\{project\}/g, workspaceName()).trim();
+  const header = fill(cfg<string>("prompt.header", ""));
+  const footer = fill(cfg<string>("prompt.footer", ""));
+  return (header ? header + "\n\n" : "") + text + (footer ? "\n\n" + footer : "");
 }
 
 /**
@@ -51,6 +62,7 @@ export class ClipboardBridge implements vscode.Disposable {
    * Vrací "text" nebo "file".
    */
   async copyPrompt(text: string, turn?: number, attachments: string[] = []): Promise<"text" | "file"> {
+    text = decoratePrompt(text, turn);
     this.lastPrompt = text;
     const threshold = cfg<number>("clipboard.fileAboveChars", 0);
     // textové přílohy (svazky souborů z <bundle>): do historie schránky (Win+V) jako samostatné texty

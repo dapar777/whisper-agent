@@ -31,3 +31,15 @@ describe("replyDetect", () => {
     expect(looksLikeReply("", "")).toBe(false);
   });
 });
+
+describe("own prompt with a user header", () => {
+  it("is still recognised as our own text, not as a reply", async () => {
+    const { isOwnPrompt, looksLikeReply } = await import("../src/protocol/replyDetect");
+    const decorated = 'Odpověz česky a stručně.\n\n<whisper-results turn="1" session="abc">\n<result of="read" path="a.ts" status="ok">\n1| x\n</result>\nContinue. Reply with <whisper turn="2">.\n</whisper-results>';
+    expect(isOwnPrompt(decorated)).toBe(true);
+    expect(looksLikeReply(decorated, "")).toBe(false);
+    const initial = "Header line\n\n# Whisper Agent session — project \"x\"\n\n<whisper turn=\"N\">\n</whisper>";
+    expect(isOwnPrompt(initial)).toBe(true);
+    expect(looksLikeReply('<whisper turn="2"><status>hi</status></whisper>', decorated)).toBe(true);
+  });
+});

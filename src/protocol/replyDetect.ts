@@ -7,7 +7,10 @@ export function normalizeClipboard(s: string): string {
 /** Text je jeden z promptů, které agent sám vyrábí. */
 export function isOwnPrompt(text: string): boolean {
   const t = normalizeClipboard(text);
-  return t.startsWith("<whisper-results") || t.startsWith("# Whisper Agent session") || t.startsWith("# Whisper Agent bundle");
+  if (t.startsWith("<whisper-results") || t.startsWith("# Whisper Agent session") || t.startsWith("# Whisper Agent bundle")) return true;
+  // prompt s uživatelskou hlavičkou (whisper.prompt.header): značka je na začátku některého z prvních řádků
+  const head = t.slice(0, 3000);
+  return /^(<whisper-results[\s>]|# Whisper Agent (session|bundle))/m.test(head);
 }
 
 /**

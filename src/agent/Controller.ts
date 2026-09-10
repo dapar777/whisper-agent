@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as vscode from "vscode";
-import { ClipboardBridge } from "../clipboard/ClipboardBridge";
+import { ClipboardBridge, decoratePrompt } from "../clipboard/ClipboardBridge";
 import {
   addGlobalHook,
   appendAgentFeedback,
@@ -443,7 +443,8 @@ export class Controller implements vscode.Disposable {
   async showPrompt(): Promise<void> {
     const p = this.session.current?.pendingPrompt;
     if (!p) return;
-    const doc = await vscode.workspace.openTextDocument({ content: p, language: "markdown" });
+    // s hlavičkou a patičkou, tedy přesně to, co jde do schránky
+    const doc = await vscode.workspace.openTextDocument({ content: decoratePrompt(p, this.session.current?.turn), language: "markdown" });
     await vscode.window.showTextDocument(doc, { preview: true });
   }
 
