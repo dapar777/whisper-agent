@@ -11,3 +11,5 @@ DESIGN.md
 **/*.map
 scripts/**
 .tmp/**
+*.bat
+*.vsix

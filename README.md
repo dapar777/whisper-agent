@@ -5,6 +5,17 @@ komunikuje **přes schránku**. Nepotřebuje API klíč: prompt zkopíruje do
 schránky, vy ho vložíte do libovolného chatu (claude.ai, ChatGPT, Gemini,
 lokální UI…), zkopírujete odpověď a agent ji sám převezme a vykoná.
 
+## Instalace
+
+1. Stáhněte z GitHubu soubor `whisper-agent-0.1.0.vsix` a `instalovat.bat` do jedné složky
+   (nebo naklonujte celé repo).
+2. Poklepejte na `instalovat.bat`. Skript sám najde VS Code, nainstaluje balíček (přepíše
+   starší verzi) a ověří, že je rozšíření vidět. Když něco chybí, napíše co a kde to vzít.
+3. Restartujte VS Code (nebo `Developer: Reload Window`).
+
+Ručně: `code --install-extension whisper-agent-0.1.0.vsix --force`, nebo ve VS Code
+Extensions › „…“ › *Install from VSIX…*.
+
 ## Jak to funguje
 
 1. V panelu Whisper (pravý postranní panel) napište úkol do pole dole a odešlete Enterem,
