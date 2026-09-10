@@ -283,6 +283,8 @@ export class Controller implements vscode.Disposable {
   private async applySuggestion(sug: Suggestion): Promise<void> {
     const host = this.host ?? this.newEngine().hostRef();
     const global = sug.scope === "global";
+    // model občas převezme HTML entity z našich výsledků (&amp;&amp;); do textových položek patří skutečné znaky
+    if (["rule", "whisper", "skill", "agent", "task"].includes(sug.kind)) sug.body = decodeEntities(sug.body);
     switch (sug.kind) {
       case "skill": {
         if (sug.update) {
@@ -693,6 +695,10 @@ export class Controller implements vscode.Disposable {
 
 function kb(s: string): string {
   return `${(s.length / 1000).toFixed(1)} k znaků`;
+}
+
+function decodeEntities(s: string): string {
+  return s.replace(/&(amp|lt|gt|quot|#39);/g, (_, e: string) => ({ amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'" })[e] ?? _);
 }
 
 function describeActions(actions: { tool: string; attrs: Record<string, string>; body?: string }[]): string {

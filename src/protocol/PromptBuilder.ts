@@ -122,59 +122,63 @@ export function buildProtocolSpec(): string {
 }
 
 export function buildRules(opts: BuilderOptions): string {
-  return [
-    "## Rules",
-    "",
-    "1. EVERY turn costs the user manual copy-paste work. Minimise turns: before changing code, request in ONE",
-    "   turn all files, searches and listings you will plausibly need (typically 5-15 read/grep/ls actions).",
-    "   Never ask for files one at a time.",
-    "2. Prefer <edit> with small, unique SEARCH blocks over <write> for existing files. Use <write> only for new",
-    "   files or complete rewrites.",
-    "3. After changing code, verify it in the same turn when possible: add <run> for tests/build and",
-    "   <diagnostics/> at the end. Fix errors reported back to you. Keep command output small (no verbose",
-    "   flags); long outputs are truncated. To verify a GUI app visually, start it with <run probe=\"N\" capture=\"M\">",
-    "   (or use <screenshot/> while it runs): the screenshot is attached as an image to the next prompt.",
-    "4. Do not repeat unchanged file content. Do not explain the protocol back. Do not include the",
-    "   <whisper-results> block in your reply.",
-    "5. Use <ask> when the task is ambiguous or a change is risky (deleting data, changing public APIs).",
-    "6. Finish with <done> containing a summary for the user. <done> may come at the END of a block after final",
-    "   actions (a last edit, a test run) so you do not spend an extra turn; if any of those actions fails, the",
-    "   task continues and you get the results instead. Nothing may follow <done>.",
-    `7. Write <status>, <ask> and <done> texts in language "${opts.language}"; code and identifiers stay as in the project.`,
-    "8. If a previous action failed, read the error, adjust and retry; do not repeat the identical action.",
-    ...(opts.planMode
-      ? [
-          "9. PLAN MODE is ON for this task: your FIRST block must contain <plan> with a hierarchical markdown checklist",
-          "   (`- [ ] item`, subtasks indented by two spaces). Keep it current in later turns: tick finished items,",
-          "   add work you discover, split items into subtasks; resend the complete <plan> whenever it changes.",
-        ]
-      : opts.planAuto !== false
-        ? [
-            "9. For larger tasks (several files or distinct steps) start with <plan>: a hierarchical markdown checklist",
-            "   (`- [ ] item`, subtasks indented by two spaces). Keep it current: tick finished items, add discovered",
-            "   work, split items; resend the complete <plan> whenever it changes. Small tasks need no plan.",
-          ]
-        : []),
-    ...(opts.directDialog !== false
-      ? [
-          "11. DIRECT DIALOGUE: the user reads this chat. When you need to ask something, you may ask directly in the",
-          "    chat text and wait for the user's answer here (no <whisper> block needed for that message). The user may",
-          "    also write clarifications directly in the chat. Whenever such an exchange happens, your NEXT <whisper>",
-          "    block must START with <dialog from=\"model\">the question you asked</dialog> and <dialog from=\"user\">",
-          "    the user's message, verbatim</dialog> so the agent records it. Prefer <ask options=…> when the answer is",
-          "    a choice from a few options.",
-        ]
-      : []),
-    ...(opts.continuousSuggest
-      ? [
-          "10. When you notice something reusable, add a <suggest> action: a repeated instruction (kind=skill or whisper),",
-          "    a safe command worth running without confirmation (kind=allow, regex), a check to run automatically after",
-          "    files change (kind=hook), or a follow-up worth doing later (kind=task). Suggestions are never applied",
-          "    automatically; keep them rare and concrete.",
-        ]
-      : []),
-    "",
-  ].join("\n");
+  // každé pravidlo = jeden řetězec s odřádkováním; číslování se doplní až podle toho, která pravidla jsou zapnutá
+  const rules: string[] = [
+    "EVERY turn costs the user manual copy-paste work. Minimise turns: before changing code, request in ONE\n" +
+      "turn all files, searches and listings you will plausibly need (typically 5-15 read/grep/ls actions).\n" +
+      "Never ask for files one at a time.",
+    "Prefer <edit> with small, unique SEARCH blocks over <write> for existing files. Use <write> only for new\nfiles or complete rewrites.",
+    "After changing code, verify it in the same turn when possible: add <run> for tests/build and\n" +
+      "<diagnostics/> at the end. Fix errors reported back to you. Keep command output small (no verbose\n" +
+      "flags); long outputs are truncated. To verify a GUI app visually, start it with <run probe=\"N\" capture=\"M\">\n" +
+      "(or use <screenshot/> while it runs): the screenshot is attached as an image to the next prompt.",
+    "Do not repeat unchanged file content. Do not explain the protocol back. Do not include the\n<whisper-results> block in your reply.",
+    "Use <ask> when the task is ambiguous or a change is risky (deleting data, changing public APIs).",
+    "Finish with <done> containing a summary for the user. <done> may come at the END of a block after final\n" +
+      "actions (a last edit, a test run) so you do not spend an extra turn; if any of those actions fails, the\n" +
+      "task continues and you get the results instead. Nothing may follow <done>.",
+    `Write <status>, <ask> and <done> texts in language "${opts.language}"; code and identifiers stay as in the project.`,
+    "If a previous action failed, read the error, adjust and retry; do not repeat the identical action.",
+  ];
+  if (opts.planMode) {
+    rules.push(
+      "PLAN MODE is ON for this task: your FIRST block must contain <plan> with a hierarchical markdown checklist\n" +
+        "(`- [ ] item`, subtasks indented by two spaces). Keep it current in later turns: tick finished items,\n" +
+        "add work you discover, split items into subtasks; resend the complete <plan> whenever it changes.",
+    );
+  } else if (opts.planAuto !== false) {
+    rules.push(
+      "For larger tasks (several files or distinct steps) start with <plan>: a hierarchical markdown checklist\n" +
+        "(`- [ ] item`, subtasks indented by two spaces). Keep it current: tick finished items, add discovered\n" +
+        "work, split items; resend the complete <plan> whenever it changes. Small tasks need no plan.",
+    );
+  }
+  if (opts.directDialog !== false) {
+    rules.push(
+      "DIRECT DIALOGUE: the user reads this chat. When you need to ask something, you may ask directly in the\n" +
+        "chat text and wait for the user's answer here (no <whisper> block needed for that message). The user may\n" +
+        "also write clarifications directly in the chat. Whenever such an exchange happens, your NEXT <whisper>\n" +
+        "block must START with <dialog from=\"model\">the question you asked</dialog> and <dialog from=\"user\">\n" +
+        "the user's message, verbatim</dialog> so the agent records it. Prefer <ask options=…> when the answer is\n" +
+        "a choice from a few options.",
+    );
+  }
+  if (opts.continuousSuggest) {
+    rules.push(
+      "When you notice something reusable, add a <suggest> action: a repeated instruction (kind=skill or whisper),\n" +
+        "a safe command worth running without confirmation (kind=allow, regex), a check to run automatically after\n" +
+        "files change (kind=hook), or a follow-up worth doing later (kind=task). Suggestions are never applied\n" +
+        "automatically; keep them rare and concrete.",
+    );
+  }
+  const lines = ["## Rules", ""];
+  rules.forEach((r, i) => {
+    const num = `${i + 1}. `;
+    const indent = " ".repeat(num.length);
+    lines.push(num + r.split("\n").join("\n" + indent));
+  });
+  lines.push("");
+  return lines.join("\n");
 }
 
 /** Prompt, který požádá model o návrhy skillů/hooků/úkolů z průběhu práce. */

@@ -11,6 +11,7 @@ import * as path from "path";
 import { NodeHost } from "../host/NodeHost";
 import { TurnEngine } from "../agent/TurnEngine";
 import { createSession, SessionData } from "../session/SessionData";
+import { Transcript } from "../transcript/Transcript";
 
 const OUTBOX = ".whisper/outbox.md";
 const INBOX = ".whisper/inbox.md";
@@ -32,6 +33,7 @@ async function main(): Promise<void> {
       console.log("  " + l);
     },
   });
+  const transcript = new Transcript(host);
   const engine = new TurnEngine(host, {
     mode: rest.includes("--stateless") ? "stateless" : "stateful",
     maxChars: 60000,
@@ -59,9 +61,20 @@ async function main(): Promise<void> {
     case "start": {
       const task = rest.filter((r) => !r.startsWith("--")).join(" ");
       const s = createSession(task, rest.includes("--stateless") ? "stateless" : "stateful");
+      s.planMode = rest.includes("--plan");
       const prompt = await engine.initialPrompt(s, await engine.gatherContext());
       await emit(s, prompt);
+      await transcript.append({ session: s.id, kind: "task", text: task, data: { planMode: s.planMode } });
       await appendLog(`START ${s.id}: ${task}`);
+      return;
+    }
+    case "suggest": {
+      // návrhy z celého transkriptu (jako /suggest v extensionu)
+      const events = await transcript.readAll();
+      const s = createSession("/suggest", "stateful");
+      const ctx = await engine.gatherContext();
+      const prompt = engine.suggestPrompt(s, Transcript.summarize(events), ctx, Transcript.suggestionHistory(events));
+      await emit(s, prompt);
       return;
     }
     case "reply": {
@@ -74,7 +87,21 @@ async function main(): Promise<void> {
       if (parsed.turn !== null && parsed.turn !== s.turn) console.log(`! turn mismatch: reply says ${parsed.turn}, expected ${s.turn} (continuing)`);
       if (parsed.errors.length) console.log(`! parse errors: ${parsed.errors.join(" | ")}`);
       console.log(`← reply turn ${s.turn}: ${parsed.actions.length} actions [${parsed.actions.map((a) => a.tool).join(", ")}]`);
+      const turn = s.turn;
+      await transcript.append({ session: s.id, kind: "actions", turn, text: parsed.actions.map((a) => `${a.tool} ${a.attrs.path ?? a.attrs.pattern ?? a.attrs.title ?? ""}`.trim()).join(", ") });
       const step = await engine.execute(s, parsed, s.pendingPrompt.length);
+      if (step.kind !== "correction") {
+        const rec = step.record;
+        await transcript.append({ session: s.id, kind: "results", turn, text: rec.results.map((r) => `${r.tool}${r.attrs.path ? " " + r.attrs.path : ""}=${r.status}`).join(", ") });
+        for (const d of rec.dialog ?? []) await transcript.append({ session: s.id, kind: "dialog", turn, text: `${d.from}: ${d.text}` });
+        if (s.plan && rec.actions.some((a) => a.tool === "plan")) await transcript.append({ session: s.id, kind: "plan", turn, text: s.plan });
+        for (const sug of (s.suggestions ?? []).filter((x) => x.turn === turn)) {
+          console.log(`💡 suggestion [${sug.scope}/${sug.kind}]${sug.update ? ` update=${sug.update}` : ""}: ${sug.title}`);
+          await transcript.append({ session: s.id, kind: "suggestion", turn, text: `${sug.kind}: ${sug.title}` });
+        }
+        if (step.kind === "done") await transcript.append({ session: s.id, kind: "done", text: step.summary });
+        if (step.kind === "ask") await transcript.append({ session: s.id, kind: "ask", text: step.question });
+      }
       switch (step.kind) {
         case "correction":
           console.log("✖ CORRECTION prompt issued");

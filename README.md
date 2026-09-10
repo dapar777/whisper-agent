@@ -50,6 +50,22 @@ a podněty pro vývojáře agenta (`~/.whisper/agent-feedback.md`). Každý náv
 nebo zamítnete kartou. S `whisper.suggest.continuous` model navrhuje průběžně při práci.
 Projektová pravidla lze psát i ručně do `.whisper/rules.md` (jedno na řádek).
 
+**Přímý dialog** (`whisper.ask.direct`, výchozí zapnuto): model se smí ptát přímo v chatu
+a vy tam odpovíte nebo cokoli dopíšete; v dalším bloku to zapíše akcemi `<dialog>`, takže
+výměna je v průběhu i v transkriptu. Odpověď bez bloku akcí se bere jako otázka v chatu,
+ne jako chyba. `<ask options="A|B">` nabízí odpovědi jako tlačítka (i vícenásobný výběr).
+
+**Screenshoty**: `<run probe="7" capture="4" window="Titulek">` spustí GUI a po 4 s ho vyfotí,
+`<screenshot/>` vyfotí obrazovku. Obrázky se přiloží k dalšímu promptu jako soubory ve schránce
+(jedním Ctrl+V se v chatu připojí text i obrázky). Jen Windows.
+
+**Stav v hlavním panelu Windows** (ikona VS Code): šipka + žlutý pruh = prompt ve schránce,
+ještě nevložen; … + běžící pruh = vložen, čeká se na model; ! = čeká se na vás (schválení,
+otázka); ✓ hotovo. Vložení se pozná díky vlastnictví schránky s odloženým vykreslením.
+
+**Přerušení**: v banneru „Provádím akce“ je vidět běžící akce s časem a tlačítko Přerušit, které
+ukončí příkaz, přeskočí zbytek a modelu pošle, co proběhlo a kde to stálo.
+
 **Skilly** jsou markdown soubory v `.whisper/skills/` (projekt) nebo `~/.whisper/skills/`
 (uživatel), buď `název.md`, nebo `název/SKILL.md` s volitelným frontmatterem
 `name` a `description`. Vyvolají se přes `/název zadání`; jejich text se přiloží
