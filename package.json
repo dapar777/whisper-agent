@@ -67,6 +67,14 @@
           "type": "number", "default": 0,
           "description": "Jen Windows: prompt delší než N znaků se uloží jako .txt a do schránky se dá soubor, který chat po Ctrl+V připojí jako přílohu. 0 = vždy text."
         },
+        "whisper.reply.watchDir": {
+          "type": "string", "default": "",
+          "description": "Složka, ve které se čeká na odpověď modelu jako NOVÝ soubor (např. složka stahování prohlížeče). Prázdné = jen schránka. Soubor se převezme, až se přestane měnit, a ověří stejně jako text ze schránky."
+        },
+        "whisper.reply.filePattern": {
+          "type": "string", "default": "*.{md,txt}",
+          "description": "Glob na název souboru s odpovědí ve složce whisper.reply.watchDir."
+        },
         "whisper.prompt.maxChars": { "type": "number", "default": 60000, "description": "Maximální délka promptu; výsledky, které se nevejdou, se odloží a model si je vyžádá znovu." },
         "whisper.prompt.resultMaxChars": { "type": "number", "default": 12000, "description": "Maximální délka výstupu příkazu/hledání v promptu (obsah souborů z <read> se nezkracuje)." },
         "whisper.prompt.treeMaxEntries": { "type": "number", "default": 200 },

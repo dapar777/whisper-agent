@@ -1,8 +1,9 @@
 import { execFile } from "child_process";
 import * as vscode from "vscode";
 import { looksLikeReply, normalizeClipboard } from "../protocol/replyDetect";
-import { cfg, workspaceRoot, writeText } from "../util";
+import { cfg, readText, workspaceRoot, writeText } from "../util";
 import { ClipboardOwner } from "./ClipboardOwner";
+import { FileReplyWatcher } from "./FileReplyWatcher";
 
 /** Windows: vloží do schránky soubory (file drop list); prohlížeč je po Ctrl+V připojí jako přílohy. */
 function setClipboardFiles(fsPaths: string[]): Promise<void> {
@@ -39,6 +40,10 @@ export class ClipboardBridge implements vscode.Disposable {
   }
   private timer: NodeJS.Timeout | undefined;
   private waiter: { resolve: (text: string) => void; reject: (e: Error) => void } | undefined;
+  private fileWatcher: FileReplyWatcher | undefined;
+  private readonly logEmitter = new vscode.EventEmitter<string>();
+  /** hlášky pro log v panelu (sledování složky s odpověďmi) */
+  readonly onDidLog = this.logEmitter.event;
 
   /**
    * Uloží prompt do schránky. Nad prahem `clipboard.fileAboveChars` (jen Windows)
@@ -48,6 +53,23 @@ export class ClipboardBridge implements vscode.Disposable {
   async copyPrompt(text: string, turn?: number, attachments: string[] = []): Promise<"text" | "file"> {
     this.lastPrompt = text;
     const threshold = cfg<number>("clipboard.fileAboveChars", 0);
+    // textové přílohy (svazky souborů z <bundle>): do historie schránky (Win+V) jako samostatné texty
+    // PŘED promptem, takže Ctrl+V vloží prompt a z historie se vezme svazek; obrázky jdou jako soubory
+    const textual = attachments.filter((a) => /\.(txt|md)$/i.test(a));
+    const binary = attachments.filter((a) => !/\.(txt|md)$/i.test(a));
+    if (textual.length && binary.length === 0 && !(threshold > 0 && text.length > threshold)) {
+      for (const a of textual) {
+        try {
+          const content = await readText(vscode.Uri.joinPath(workspaceRoot(), a));
+          await vscode.env.clipboard.writeText(content);
+          // historie schránky si položku uloží až po chvíli; bez pauzy by ji prompt přepsal dřív
+          await new Promise((r) => setTimeout(r, 400));
+        } catch {
+          /* svazek zůstává na disku; prompt na něj odkazuje */
+        }
+      }
+      attachments = [];
+    }
     const wantFile = attachments.length > 0 || (threshold > 0 && text.length > threshold);
     if (wantFile && process.platform === "win32") {
       try {
@@ -111,7 +133,25 @@ export class ClipboardBridge implements vscode.Disposable {
         },
       };
       if (cfg<boolean>("clipboard.watch", true)) this.startPolling();
+      this.startFileWatch();
     });
+  }
+
+  /** Odpověď může přijít i jako nový soubor ve složce `whisper.reply.watchDir` (např. stažený z chatu). */
+  private startFileWatch(): void {
+    this.fileWatcher?.stop();
+    this.fileWatcher = undefined;
+    const dir = cfg<string>("reply.watchDir", "").trim();
+    if (!dir) return;
+    this.fileWatcher = new FileReplyWatcher({
+      dir,
+      pattern: cfg<string>("reply.filePattern", "*.{md,txt}"),
+      pollMs: Math.max(500, cfg<number>("clipboard.pollMs", 500)),
+      lastPrompt: this.lastPrompt,
+      log: (l) => this.logEmitter.fire(l),
+      onReply: (text) => this.waiter?.resolve(text),
+    });
+    this.fileWatcher.start();
   }
 
   /** Ruční vložení odpovědi (příkaz nebo textarea v sidebaru). */
@@ -147,6 +187,8 @@ export class ClipboardBridge implements vscode.Disposable {
   private stopPolling(): void {
     if (this.timer) clearInterval(this.timer);
     this.timer = undefined;
+    this.fileWatcher?.stop();
+    this.fileWatcher = undefined;
   }
 
   private cancelWait(err: Error): void {
@@ -160,5 +202,6 @@ export class ClipboardBridge implements vscode.Disposable {
     this.cancelWait(new Error("disposed"));
     this.owner.dispose();
     this.otherEmitter.dispose();
+    this.logEmitter.dispose();
   }
 }

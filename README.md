@@ -66,6 +66,20 @@ a vy tam odpovíte nebo cokoli dopíšete; v dalším bloku to zapíše akcemi `
 výměna je v průběhu i v transkriptu. Odpověď bez bloku akcí se bere jako otázka v chatu,
 ne jako chyba. `<ask options="A|B">` nabízí odpovědi jako tlačítka (i vícenásobný výběr).
 
+**Svazek souborů** (`<bundle>`): místo mnoha `<read>` si model může říct o víc souborů, adresáře,
+globy nebo celou codebase (`<bundle all="true"/>`) jako jeden strukturovaný textový soubor
+(číslované řádky, sekce na soubor, obsah na začátku; binární a obří soubory se vynechají,
+`.gitignore` se respektuje). Svazek se uloží do `.whisper/out/bundle-<kolo>-<n>.txt` a do
+schránky se dá **nejdřív jako text** a pak teprve prompt: `Ctrl+V` vloží prompt, svazek vezmete
+z historie schránky (`Win+V`); v chatu se dlouhý text sám změní v přílohu. Prompt modelu říká, že
+svazek je přiložen, a co dělat, když ho nevidí.
+
+**Odpověď v souboru** (`whisper.reply.watchDir`): kromě schránky lze odpověď modelu doručit
+jako **nový soubor** ve sledované složce, třeba ve složce stahování prohlížeče. Sledují se jen
+soubory vzniklé po odeslání promptu, název musí vyhovovat `whisper.reply.filePattern`
+(výchozí `*.{md,txt}`), soubor se přečte, až se přestane měnit (stahování po částech), a ověří
+stejně jako text ze schránky. Soubory bez bloku `<whisper turn=…>` se ignorují (vidět v logu).
+
 **Screenshoty**: `<run probe="7" capture="4" window="Titulek">` spustí GUI a po 4 s ho vyfotí,
 `<screenshot/>` vyfotí obrazovku. Obrázky se přiloží k dalšímu promptu jako soubory ve schránce
 (jedním Ctrl+V se v chatu připojí text i obrázky). Jen Windows.
@@ -123,6 +137,8 @@ Při novém úkolu se plán z předchozího sezení odloží: hotový se smaže,
 - `whisper.mode` – `stateful` (chat drží historii, posílají se jen výsledky) nebo
   `stateless` (každý prompt je soběstačný).
 - `whisper.clipboard.watch` – automatické převzetí odpovědi ze schránky.
+- `whisper.reply.watchDir`, `whisper.reply.filePattern` – složka a glob pro odpověď doručenou
+  jako nový soubor (viz výše); prázdná složka = jen schránka.
 - `whisper.clipboard.fileAboveChars` – jen Windows: prompt delší než N znaků jde do
   schránky jako soubor `.txt` (vloží se jako příloha). Výchozí 0 = vždy text; na
   claude.ai se dlouhý text stejně sám změní v přílohu, takže to obvykle není třeba.

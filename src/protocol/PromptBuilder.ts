@@ -142,8 +142,8 @@ export function buildRules(opts: BuilderOptions): string {
   // každé pravidlo = jeden řetězec s odřádkováním; číslování se doplní až podle toho, která pravidla jsou zapnutá
   const rules: string[] = [
     "EVERY turn costs the user manual copy-paste work. Minimise turns: before changing code, request in ONE\n" +
-      "turn all files, searches and listings you will plausibly need (typically 5-15 read/grep/ls actions).\n" +
-      "Never ask for files one at a time.",
+      "turn all files, searches and listings you will plausibly need (typically 5-15 read/grep/ls actions,\n" +
+      "or one <bundle> for a whole module or codebase). Never ask for files one at a time.",
     "Prefer <edit> with small, unique SEARCH blocks over <write> for existing files. Use <write> only for new\nfiles or complete rewrites.",
     "After changing code, verify it in the same turn when possible: add <run> for tests/build and\n" +
       "<diagnostics/> at the end. Fix errors reported back to you. Keep command output small (no verbose\n" +
@@ -384,9 +384,16 @@ export function buildResultsPrompt(
     );
   }
   const attachments = results.flatMap((r) => r.attachments ?? []);
-  if (attachments.length) {
+  const images = attachments.filter((a) => !/\.(txt|md)$/i.test(a));
+  const bundles = attachments.filter((a) => /\.(txt|md)$/i.test(a));
+  if (images.length) {
     tail.unshift(
-      `<note>Images attached to this message: ${attachments.map((a) => a.split("/").pop()).join(", ")} (screenshots taken by the actions above). Look at them to verify the GUI. If you cannot see any image, tell the user to attach the files from .whisper/shots/.</note>`,
+      `<note>Images attached to this message: ${images.map((a) => a.split("/").pop()).join(", ")} (screenshots taken by the actions above). Look at them to verify the GUI. If you cannot see any image, tell the user to attach the files from .whisper/shots/.</note>`,
+    );
+  }
+  if (bundles.length) {
+    tail.unshift(
+      `<note>Bundle(s) attached to this message: ${bundles.map((a) => a.split("/").pop()).join(", ")} (structured text with numbered lines, one section per file). They may arrive as a pasted text, a text attachment or a file. Use them instead of reading those files again. If you cannot see any bundle, ask the user to paste it from the clipboard history (Win+V) or attach the file from .whisper/out/.</note>`,
     );
   }
   parts.push(...tail);

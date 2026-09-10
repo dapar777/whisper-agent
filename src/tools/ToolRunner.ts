@@ -7,6 +7,7 @@ import { toolDiagnostics } from "./diagnostics";
 import { toolGlob, toolLs, toolRead } from "./fs";
 import { toolGrep } from "./grep";
 import { toolRun } from "./run";
+import { toolBundle } from "./bundle";
 import { takeScreenshot } from "./screenshot";
 
 /** Napojení na review změn (ve VS Code); headless běh ho nepotřebuje. */
@@ -108,6 +109,8 @@ export class ToolRunner {
           return await toolRun(this.host, a.attrs, a.body ?? "", turn, a.index, signal);
         case "screenshot":
           return await takeScreenshot(this.host, turn, a.index, { window: a.attrs.window, name: a.attrs.name });
+        case "bundle":
+          return await toolBundle(this.host, a.attrs, turn, a.index);
         case "plan":
           return await this.plan(a, outcome);
         case "suggest":

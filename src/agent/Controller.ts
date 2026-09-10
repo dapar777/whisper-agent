@@ -96,6 +96,7 @@ export class Controller implements vscode.Disposable {
     clipboard.onDidCopyOther(() => {
       if (this.promptPhase === "fresh") this.setPromptPhase("sent");
     });
+    clipboard.onDidLog((l) => this.logLine(l));
     this.reloadSkills();
   }
 

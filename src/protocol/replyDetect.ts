@@ -7,7 +7,7 @@ export function normalizeClipboard(s: string): string {
 /** Text je jeden z promptů, které agent sám vyrábí. */
 export function isOwnPrompt(text: string): boolean {
   const t = normalizeClipboard(text);
-  return t.startsWith("<whisper-results") || t.startsWith("# Whisper Agent session");
+  return t.startsWith("<whisper-results") || t.startsWith("# Whisper Agent session") || t.startsWith("# Whisper Agent bundle");
 }
 
 /**

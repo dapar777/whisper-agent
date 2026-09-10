@@ -110,6 +110,20 @@ export const TOOLS: ToolDef[] = [
     example: '<run timeout="180">npm test -- RegisterForm</run>',
   },
   {
+    name: "bundle",
+    hasBody: false,
+    attrs: [
+      { name: "paths", required: false, doc: 'comma-separated paths, directories or globs, e.g. "src/**/*.ts, tests, README.md"' },
+      { name: "all", required: false, doc: '"true" = the whole codebase (respects .gitignore; binaries and huge files skipped)' },
+      { name: "maxChars", required: false, doc: "size limit of the bundle (default 400000)" },
+    ],
+    doc:
+      "Get MANY files at once as ONE structured text file (numbered lines, one section per file) instead of many <read>s. " +
+      "The bundle is saved under .whisper/out/ and attached to the next prompt (as text in the clipboard history and as a file). " +
+      "Use it when you need to understand a whole module or the whole codebase; use <read> for one or two files.",
+    example: '<bundle paths="src/**/*.ts, package.json"/>',
+  },
+  {
     name: "screenshot",
     hasBody: false,
     attrs: [
