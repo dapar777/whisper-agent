@@ -52,7 +52,7 @@ export interface SessionData {
   notes?: string[];
 }
 
-export type SuggestionKind = "skill" | "whisper" | "rule" | "hook" | "allow" | "setting" | "task" | "agent";
+export type SuggestionKind = "skill" | "script" | "whisper" | "rule" | "hook" | "allow" | "setting" | "task" | "agent";
 
 export interface Suggestion {
   id: string;
@@ -64,6 +64,10 @@ export interface Suggestion {
   turn: number;
   /** úprava existující položky místo nové: název skillu, "rule N" nebo match hooku */
   update?: string;
+  /** kind="script": jazyk skriptu (python, node, bash, powershell…) */
+  lang?: string;
+  /** kind="script": požadovaný název souboru */
+  file?: string;
   /** automaticky odhalený duplikát něčeho, co už existuje */
   duplicate?: boolean;
   decision?: "approved" | "rejected";

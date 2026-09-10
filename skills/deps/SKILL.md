@@ -4,10 +4,10 @@ description: Zkontroluje zastaralé/zranitelné závislosti a bezpečně je aktu
 ---
 Check and update the project's dependencies safely.
 
-1. Detect the package manager from the manifests and run the read-only checks (one per `<run>`,
-   timeout 300): npm `npm outdated` + `npm audit`, Python `pip list --outdated`, Cargo
-   `cargo outdated`/`cargo audit` if installed, .NET `dotnet list package --outdated`, Go
-   `go list -m -u all`. Missing tools are reported, not installed silently.
+1. Run the bundled checker in ONE action instead of a command per ecosystem:
+   `check-deps.py` (its full path is listed at the end of this skill; add `--audit` for the security audit, `--dir sub` to
+   limit it). It finds every manifest in the repo, runs the right tool for each, groups npm updates into
+   patch/minor and MAJOR, and reports missing tools instead of failing on them. Use a timeout of 600.
 2. `<ask multi="true">` which updates to apply, grouped: security fixes, patch/minor (low risk),
    major (may break). Put this ask in the SAME turn as the checks only if the user gave no preference
    after /deps; otherwise follow it.

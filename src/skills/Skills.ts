@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { parseSkillFile, SlashCommand } from "../protocol/slash";
+import { runCommandFor } from "./Scripts";
 
 /**
  * Skilly dostupné přes /název. Whisper je nezávislý na jiných nástrojích, hledá jen ve svých adresářích:
@@ -33,13 +34,52 @@ export function loadSkills(workspaceRoot: string, builtinDir?: string): SlashCom
         const parsed = parseSkillFile(content, fallback);
         if (!parsed.name || seen.has(parsed.name)) continue;
         seen.add(parsed.name);
-        out.push({ name: parsed.name, kind: "skill", description: parsed.description || "(skill)", body: parsed.body, source: file, builtin: src.builtin });
+        const body = parsed.body + describeSkillScripts(file, workspaceRoot);
+        out.push({ name: parsed.name, kind: "skill", description: parsed.description || "(skill)", body, source: file, builtin: src.builtin });
       } catch {
         /* nečitelný skill přeskočíme */
       }
     }
   }
   return out;
+}
+
+/** Přípony, které se u skillu berou jako spustitelné skripty. */
+const SCRIPT_EXT = /\.(py|js|mjs|cjs|ts|sh|ps1|cmd|bat|rb|pl)$/i;
+
+/**
+ * Skill uložený jako adresář (`název/SKILL.md`) může vedle playbooku nést i skripty.
+ * Ty se vypíšou do těla skillu i s příkazem ke spuštění, aby o nich model věděl.
+ */
+function describeSkillScripts(skillFile: string, workspaceRoot: string): string {
+  const dir = path.dirname(skillFile);
+  if (path.basename(skillFile).toLowerCase() !== "skill.md") return "";
+  let names: string[];
+  try {
+    names = fs.readdirSync(dir).filter((n) => SCRIPT_EXT.test(n));
+  } catch {
+    return "";
+  }
+  // skripty mohou být i v podsložce scripts/
+  try {
+    for (const n of fs.readdirSync(path.join(dir, "scripts")).filter((n) => SCRIPT_EXT.test(n))) names.push(path.join("scripts", n));
+  } catch {
+    /* podsložka scripts/ nemusí existovat */
+  }
+  if (!names.length) return "";
+  const lines = names.sort().map((n) => {
+    const abs = path.join(dir, n);
+    const rel = abs.startsWith(workspaceRoot) ? path.relative(workspaceRoot, abs).replace(/\\/g, "/") : abs.replace(/\\/g, "/");
+    return `- \`${runCommandFor(rel)}\``;
+  });
+  return [
+    "",
+    "",
+    "## Scripts shipped with this skill",
+    "",
+    "Run them with <run> instead of writing the same code again (`--help` where available):",
+    ...lines,
+  ].join("\n");
 }
 
 function listSkillFiles(dir: string, nested: boolean): string[] {

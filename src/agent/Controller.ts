@@ -23,6 +23,7 @@ import { Checkpoint } from "../safety/Checkpoint";
 import { Session } from "../session/Session";
 import { Suggestion } from "../session/SessionData";
 import { loadSkills, saveSkill } from "../skills/Skills";
+import { saveScript } from "../skills/Scripts";
 import { PLAN_FILE } from "../tools/ToolRunner";
 import { ChangeListener } from "../tools/ToolRunner";
 import { describeActions, describeResults, Transcript, TranscriptEvent } from "../transcript/Transcript";
@@ -333,7 +334,7 @@ export class Controller implements vscode.Disposable {
     const host = this.host ?? this.newEngine().hostRef();
     const global = sug.scope === "global";
     // model občas převezme HTML entity z našich výsledků (&amp;&amp;); do textových položek patří skutečné znaky
-    if (["rule", "whisper", "skill", "agent", "task"].includes(sug.kind)) sug.body = decodeEntities(sug.body);
+    if (["rule", "whisper", "skill", "script", "agent", "task"].includes(sug.kind)) sug.body = decodeEntities(sug.body);
     switch (sug.kind) {
       case "skill": {
         if (sug.update) {
@@ -345,6 +346,13 @@ export class Controller implements vscode.Disposable {
           saveSkill(workspaceRoot().fsPath, sug.title, sug.body, global);
         }
         this.reloadSkills();
+        return;
+      }
+      case "script": {
+        // spustitelný skript: uloží se do .whisper/scripts (nebo ~/.whisper/scripts) a zapíše se do logu, jak ho spustit
+        const saved = saveScript(workspaceRoot().fsPath, sug.title, sug.body, { global, lang: sug.lang, file: sug.file });
+        this.logLine(`📜 Skript uložen: ${saved.rel} (spustit: ${saved.command})`);
+        this.pushItem({ kind: "status", text: `Skript uložen do ${saved.rel}. Spustíte ho příkazem: ${saved.command}` });
         return;
       }
       case "whisper":

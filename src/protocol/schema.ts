@@ -179,13 +179,16 @@ export const TOOLS: ToolDef[] = [
     name: "suggest",
     hasBody: true,
     attrs: [
-      { name: "kind", required: true, doc: "skill | whisper | rule | hook | allow | setting | task | agent" },
+      { name: "kind", required: true, doc: "skill | script | whisper | rule | hook | allow | setting | task | agent" },
       { name: "scope", required: false, doc: "project (default) = this workspace only; global = the agent's behaviour in every project" },
       { name: "title", required: true, doc: "short title shown to the user" },
       { name: "update", required: false, doc: 'modify an existing item instead of adding one: skill name, "rule N" (from Additional rules) or a hook match glob; the body is the complete replacement' },
+      { name: "lang", required: false, doc: 'with kind="script": python | node | bash | powershell | cmd… (decides the file extension; a shebang works too)' },
+      { name: "file", required: false, doc: 'with kind="script": the file name to save it under, e.g. "release.py"' },
     ],
     bodyDoc:
-      "skill: markdown instructions reusable via /name (start with a `# name` line); whisper: lines for the instructions file (WHISPER.md, or the global one); rule: one concise rule for how the agent should work (added to the preamble rules); hook: JSON {\"match\": glob, \"run\": command, \"cwd\"?: dir} run automatically after matching files change; allow: a regular expression for commands that may run without confirmation; setting: JSON {\"key\": \"whisper.…\", \"value\": …}; task: a follow-up task for the plan; agent: feedback for the agent's developer (protocol, tools, prompts) that cannot be applied automatically",
+      "skill: markdown instructions reusable via /name (start with a `# name` line); " +
+      "script: the COMPLETE source of a runnable script that automates a job you had to do by hand (saved to .whisper/scripts/ and run with <run>); whisper: lines for the instructions file (WHISPER.md, or the global one); rule: one concise rule for how the agent should work (added to the preamble rules); hook: JSON {\"match\": glob, \"run\": command, \"cwd\"?: dir} run automatically after matching files change; allow: a regular expression for commands that may run without confirmation; setting: JSON {\"key\": \"whisper.…\", \"value\": …}; task: a follow-up task for the plan; agent: feedback for the agent's developer (protocol, tools, prompts) that cannot be applied automatically",
     doc: "Propose a reusable improvement for the user to approve (never applied automatically). Prefer scope=global for anything that would help in every project.",
     example: '<suggest kind="rule" scope="global" title="Testy až po všech editech">Run tests once at the end of a turn, after all edits, not after each file.</suggest>',
   },

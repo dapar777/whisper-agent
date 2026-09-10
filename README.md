@@ -59,6 +59,12 @@ pravidla chování do preambule (`~/.whisper/rules.md`), instrukce pro všechny 
 (`~/.whisper/WHISPER.md`), globální skilly a hooky, změny nastavení `whisper.*`
 a podněty pro vývojáře agenta (`~/.whisper/agent-feedback.md`). Každý návrh přijmete
 nebo zamítnete kartou. S `whisper.suggest.continuous` model navrhuje průběžně při práci.
+
+Kromě textu navrhuje i **automatizaci**: `<suggest kind="script">` nese celý zdroják spustitelného
+skriptu pro práci, kterou jste dělali ručně (řada příkazů za sebou, kontroly před vydáním, převody
+souborů). Po schválení se uloží do `.whisper/scripts/` (nebo `~/.whisper/scripts/` u globálních),
+na Unixu se nastaví práva na spuštění a v panelu se vypíše příkaz ke spuštění. Přípona se odvodí
+z `lang=`, ze shebangu nebo z kódu.
 Projektová pravidla lze psát i ručně do `.whisper/rules.md` (jedno na řádek).
 
 **Přímý dialog** (`whisper.ask.direct`, výchozí zapnuto): model se smí ptát přímo v chatu
@@ -108,6 +114,12 @@ ukončí příkaz, přeskočí zbytek a modelu pošle, co proběhlo a kde to st�
 
 Za příkaz lze dopsat upřesnění (`/fix TypeError v storage.ts při prázdném souboru`). Vlastní skill
 stejného jména vestavěný přepíše.
+
+**Skilly mohou nést skripty**: skill uložený jako adresář (`název/SKILL.md`) může mít vedle playbooku
+skripty (přímo, nebo v podsložce `scripts/`). Whisper je vypíše na konec skillu i s příkazem ke
+spuštění, takže model je zavolá přes `<run>` místo psaní stejného kódu znovu. Takto jsou udělané
+`/review` (posbírá diff, statistiku a upozorní na tajné hodnoty či ladicí výpisy) a `/deps`
+(projde všechny manifesty v repu a roztřídí aktualizace na bezpečné a major).
 
 **Vlastní skilly** jsou markdown soubory v `.whisper/skills/` (projekt) nebo `~/.whisper/skills/`
 (uživatel), buď `název.md`, nebo `název/SKILL.md` s volitelným frontmatterem

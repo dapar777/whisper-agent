@@ -24,6 +24,9 @@ export interface SuggestionDraft {
   title: string;
   body: string;
   update?: string;
+  /** kind="script": jazyk a název souboru */
+  lang?: string;
+  file?: string;
 }
 
 export interface RunOutcome {
@@ -52,7 +55,7 @@ export interface RunContext {
   onStart?: (action: Action) => void;
   onEnd?: (action: Action, durationMs: number) => void;
 }
-const SUGGEST_KINDS = new Set(["skill", "whisper", "rule", "hook", "allow", "setting", "task", "agent"]);
+const SUGGEST_KINDS = new Set(["skill", "script", "whisper", "rule", "hook", "allow", "setting", "task", "agent"]);
 
 export class ToolRunner {
   constructor(
@@ -236,8 +239,16 @@ export class ToolRunner {
     }
     const scope = (a.attrs.scope ?? "").toLowerCase() === "global" ? "global" : "project";
     const update = a.attrs.update?.trim() || undefined;
-    outcome.suggestions.push({ kind, scope, title: a.attrs.title ?? kind, body: (a.body ?? "").trim(), update });
-    return { tool: "suggest", attrs: { kind, scope, title: a.attrs.title ?? kind, ...(update ? { update } : {}) }, status: "ok", meta: { queued: "awaiting user approval" } };
+    // u kind="script" nese lang/file jazyk a název souboru
+    const lang = a.attrs.lang?.trim() || undefined;
+    const file = a.attrs.file?.trim() || undefined;
+    outcome.suggestions.push({ kind, scope, title: a.attrs.title ?? kind, body: (a.body ?? "").trim(), update, lang, file });
+    return {
+      tool: "suggest",
+      attrs: { kind, scope, title: a.attrs.title ?? kind, ...(update ? { update } : {}), ...(lang ? { lang } : {}), ...(file ? { file } : {}) },
+      status: "ok",
+      meta: { queued: "awaiting user approval" },
+    };
   }
 
   private async saveFullOutput(turn: number, a: Action, output: string): Promise<string> {
