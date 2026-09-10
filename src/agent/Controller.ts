@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as os from "os";
 import * as vscode from "vscode";
 import { ClipboardBridge } from "../clipboard/ClipboardBridge";
 import {
@@ -34,7 +35,11 @@ const HELP = [
   "zkopírujte odpověď a Whisper ji sám převezme.",
   "",
   "Příkazy: /plan zadání (režim PLAN s checklistem), /suggest (návrhy skillů, hooků, povolení a úkolů z průběhu),",
-  "/auto (přepnout schvalování příkazů), /resend (nový chat), /undo (vrátit kolo), /stop (zrušit), /název-skillu zadání.",
+  "/auto (přepnout schvalování příkazů), /resend (nový chat), /undo (vrátit kolo), /stop (zrušit), /new (vyčistit),",
+  "/status, /skills, /název-skillu zadání.",
+  "",
+  "Vestavěné skilly: /init (založí WHISPER.md z průzkumu projektu), /commit, /review, /test, /fix <chyba>,",
+  "/explain <co>, /docs, /deps. Vlastní skilly: .whisper/skills/ (projekt) nebo ~/.whisper/skills/ (uživatel).",
   "",
   "Během čekání na odpověď můžete psát poznámky; přiloží se k dalšímu promptu. Když se model zeptá, odpověď napište sem.",
 ].join("\n");
@@ -109,9 +114,12 @@ export class Controller implements vscode.Disposable {
     return [...BUILTIN_COMMANDS, ...this.skills];
   }
 
+  /** složka vestavěných skillů (skills/ v rozšíření); nastavuje extension.ts */
+  builtinSkillsDir?: string;
+
   reloadSkills(): void {
     try {
-      this.skills = loadSkills(workspaceRoot().fsPath);
+      this.skills = loadSkills(workspaceRoot().fsPath, this.builtinSkillsDir);
     } catch {
       this.skills = [];
     }
@@ -148,6 +156,22 @@ export class Controller implements vscode.Disposable {
         case "help":
           this.pushItem({ kind: "status", text: HELP });
           return;
+        case "new":
+          if (s && !["idle", "done"].includes(s.state)) this.abort();
+          this.items = [];
+          this.pushItem({ kind: "status", text: "Panel vyčištěn. Napište nové zadání." });
+          return;
+        case "status":
+          this.pushItem({ kind: "status", text: this.describeStatus() });
+          return;
+        case "skills":
+          this.pushItem({
+            kind: "status",
+            text: this.skills.length
+              ? "Skilly:\n" + this.skills.map((k) => `/${k.name} – ${k.description}${k.builtin ? " [vestavěný]" : k.source?.startsWith(os.homedir()) ? " [uživatel]" : " [projekt]"}`).join("\n")
+              : "Žádné skilly.",
+          });
+          return;
         case "suggest":
           await this.runSuggest();
           return;
@@ -172,6 +196,28 @@ export class Controller implements vscode.Disposable {
     await this.start(composeTask(parsed), planMode, raw);
   }
 
+  private describeStatus(): string {
+    const s = this.session.current;
+    if (!s) return "Žádné sezení. Napište zadání.";
+    const states: Record<string, string> = {
+      idle: "nečinný",
+      waitingForReply: this.promptPhase === "sent" ? "čekám na odpověď modelu (prompt vložen)" : "prompt je ve schránce, ještě nebyl vložen",
+      executing: `provádím akce${this.currentAction ? ` (${this.currentAction.tool})` : ""}`,
+      awaitingUser: "čekám na vaši odpověď",
+      done: "hotovo",
+    };
+    const lines = [
+      `Sezení ${s.id}: ${states[s.state] ?? s.state}, kolo ${s.turn}, režim ${s.mode}${s.planMode ? " + PLAN" : ""}.`,
+      `Schvalování příkazů: ${this.approvals.mode === "auto" ? "automaticky" : "ptát se"}; výjimek: ${this.approvals.allowPatterns().length}.`,
+    ];
+    if (s.plan) {
+      const items = s.plan.split("\n").filter((l) => /^\s*- \[[ xX]\]/.test(l));
+      lines.push(`Plán: ${items.filter((l) => /\[[xX]\]/.test(l)).length}/${items.length} hotovo.`);
+    }
+    if (s.pendingQuestion) lines.push(`Otázka: ${s.pendingQuestion}`);
+    return lines.join("\n");
+  }
+
   async start(task: string, planMode = false, original?: string): Promise<void> {
     if (this.session.current && !["idle", "done"].includes(this.session.current.state)) {
       const pick = await vscode.window.showWarningMessage("Běží jiný úkol. Zrušit ho a začít nový?", { modal: true }, "Zrušit a začít");
@@ -180,12 +226,14 @@ export class Controller implements vscode.Disposable {
     }
     workspaceRoot();
     const mode = cfg<"stateful" | "stateless">("mode", "stateful");
+    const previous = this.session.current?.id;
     const s = this.session.start(task, mode);
     s.planMode = planMode;
     this.items = [];
     this.pushItem({ kind: "task", text: original ?? task, data: { planMode } });
     this.logLine(`▶ Nový úkol (${mode}${planMode ? ", PLAN" : ""}): ${task.split("\n")[0]}`);
     const engine = this.newEngine();
+    await engine.archivePlan(previous);
     await this.transcript?.append({ session: s.id, kind: "task", text: task, data: { planMode } });
     const ctx = await engine.gatherContext(this.activeEditor(), this.skills.map((k) => ({ name: k.name, description: k.description })));
     const prompt = await engine.initialPrompt(s, ctx);

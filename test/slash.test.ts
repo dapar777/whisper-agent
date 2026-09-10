@@ -28,7 +28,7 @@ describe("slash", () => {
   });
 
   it("completes by prefix with builtins first", () => {
-    expect(completeSlash("", all).map((c) => c.name)).toEqual(["auto", "help", "plan", "resend", "stop", "suggest", "undo", "review"]);
+    expect(completeSlash("", all).map((c) => c.name)).toEqual(["auto", "help", "new", "plan", "resend", "skills", "status", "stop", "suggest", "undo", "review"]);
     expect(completeSlash("re", all).map((c) => c.name)).toEqual(["resend", "review"]);
   });
 

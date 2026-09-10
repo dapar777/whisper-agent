@@ -12,6 +12,8 @@ import { NodeHost } from "../host/NodeHost";
 import { TurnEngine } from "../agent/TurnEngine";
 import { createSession, SessionData } from "../session/SessionData";
 import { describeActions, describeResults, Transcript } from "../transcript/Transcript";
+import { loadSkills } from "../skills/Skills";
+import { BUILTIN_COMMANDS, composeTask, parseInput } from "../protocol/slash";
 
 const OUTBOX = ".whisper/outbox.md";
 const INBOX = ".whisper/inbox.md";
@@ -59,10 +61,21 @@ async function main(): Promise<void> {
 
   switch (cmd) {
     case "start": {
-      const task = rest.filter((r) => !r.startsWith("--")).join(" ");
+      // /skill na začátku zadání se rozbalí jako v extensionu (vestavěné skilly leží v <repo>/skills)
+      const skills = loadSkills(rootAbs, path.join(__dirname, "..", "skills"));
+      const parsed = parseInput(rest.filter((r) => !r.startsWith("--")).join(" "), [...BUILTIN_COMMANDS, ...skills]);
+      for (const u of parsed.unknown) console.log(`! unknown command /${u}`);
+      const task = composeTask(parsed);
       const s = createSession(task, rest.includes("--stateless") ? "stateless" : "stateful");
-      s.planMode = rest.includes("--plan");
-      const prompt = await engine.initialPrompt(s, await engine.gatherContext());
+      s.planMode = rest.includes("--plan") || parsed.commands.includes("plan");
+      let previous: string | undefined;
+      try {
+        previous = (await load()).id;
+      } catch {
+        /* první sezení */
+      }
+      await engine.archivePlan(previous);
+      const prompt = await engine.initialPrompt(s, await engine.gatherContext(undefined, skills.map((k) => ({ name: k.name, description: k.description }))));
       await emit(s, prompt);
       await transcript.append({ session: s.id, kind: "task", text: task, data: { planMode: s.planMode } });
       await appendLog(`START ${s.id}: ${task}`);

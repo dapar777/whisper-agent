@@ -50,6 +50,18 @@ export class TurnEngine {
     this.runner = new ToolRunner(host, opts.resultMaxChars, listener);
   }
 
+  /**
+   * Před novým úkolem odloží plán předchozího sezení: hotový plán (vše odškrtnuté) smaže,
+   * rozpracovaný archivuje do .whisper/plan-<session>.md. Nový úkol tak nezačíná s cizím checklistem.
+   */
+  async archivePlan(previousSessionId?: string): Promise<void> {
+    if (!(await this.host.exists(PLAN_FILE))) return;
+    const plan = await this.host.readFile(PLAN_FILE);
+    const open = plan.split("\n").some((l) => /^\s*- \[ \]/.test(l));
+    if (open && previousSessionId) await this.host.writeFile(`.whisper/plan-${previousSessionId}.md`, plan);
+    await this.host.deleteFile(PLAN_FILE);
+  }
+
   async gatherContext(active?: ProjectContext["active"], skills?: ProjectContext["skills"]): Promise<ProjectContext> {
     const ctx: ProjectContext = { workspaceName: this.host.workspaceName, tree: await renderTree(this.host, this.opts.treeMaxEntries) };
     if (await this.host.exists("WHISPER.md")) ctx.instructions = await this.host.readFile("WHISPER.md");

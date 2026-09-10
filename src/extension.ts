@@ -15,6 +15,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const checkpoint = new Checkpoint();
   const approvals = new ApprovalService();
   const controller = new Controller(session, review, clipboard, checkpoint, approvals);
+  controller.builtinSkillsDir = vscode.Uri.joinPath(context.extensionUri, "skills").fsPath;
+  controller.reloadSkills();
   const sidebar = new SidebarView(controller, context.extensionUri);
 
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);

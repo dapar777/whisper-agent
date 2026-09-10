@@ -9,6 +9,8 @@ export interface SlashCommand {
   body?: string;
   /** odkud skill pochází (cesta) */
   source?: string;
+  /** vestavěný skill dodávaný s rozšířením (složka skills/) */
+  builtin?: boolean;
 }
 
 export const BUILTIN_COMMANDS: SlashCommand[] = [
@@ -18,6 +20,9 @@ export const BUILTIN_COMMANDS: SlashCommand[] = [
   { name: "resend", kind: "builtin", description: "Znovu poslat kontext do nového chatu" },
   { name: "undo", kind: "builtin", description: "Vrátit poslední kolo (git checkpoint)" },
   { name: "stop", kind: "builtin", description: "Zrušit běžící úkol" },
+  { name: "new", kind: "builtin", description: "Vyčistit panel a začít znovu (ukončí běžící úkol)" },
+  { name: "status", kind: "builtin", description: "Stav sezení: kolo, režim, čekání, plán" },
+  { name: "skills", kind: "builtin", description: "Seznam dostupných skillů a odkud jsou" },
   { name: "help", kind: "builtin", description: "Nápověda k příkazům a stavům" },
 ];
 

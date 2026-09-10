@@ -9,14 +9,20 @@ import { parseSkillFile, SlashCommand } from "../protocol/slash";
  *  - <workspace>/.whisper/skills/*\/SKILL.md (skill s vlastním adresářem)
  *  - ~/.whisper/skills/*.md a ~/.whisper/skills/*\/SKILL.md (skilly uživatele)
  */
-export function loadSkills(workspaceRoot: string): SlashCommand[] {
+/**
+ * Načte skilly: projektové (.whisper/skills), uživatelské (~/.whisper/skills) a vestavěné
+ * (složka `skills/` dodávaná s rozšířením: /init, /commit, /review, /test, /fix, /explain, /docs, /deps).
+ * Při shodě jména vyhrává projekt, pak uživatel, vestavěný lze tedy přepsat.
+ */
+export function loadSkills(workspaceRoot: string, builtinDir?: string): SlashCommand[] {
   const home = os.homedir();
-  const sources: { dir: string; nested: boolean }[] = [
+  const sources: { dir: string; nested: boolean; builtin?: boolean }[] = [
     { dir: path.join(workspaceRoot, ".whisper", "skills"), nested: false },
     { dir: path.join(workspaceRoot, ".whisper", "skills"), nested: true },
     { dir: path.join(home, ".whisper", "skills"), nested: false },
     { dir: path.join(home, ".whisper", "skills"), nested: true },
   ];
+  if (builtinDir) sources.push({ dir: builtinDir, nested: true, builtin: true }, { dir: builtinDir, nested: false, builtin: true });
   const seen = new Set<string>();
   const out: SlashCommand[] = [];
   for (const src of sources) {
@@ -27,7 +33,7 @@ export function loadSkills(workspaceRoot: string): SlashCommand[] {
         const parsed = parseSkillFile(content, fallback);
         if (!parsed.name || seen.has(parsed.name)) continue;
         seen.add(parsed.name);
-        out.push({ name: parsed.name, kind: "skill", description: parsed.description || "(skill)", body: parsed.body, source: file });
+        out.push({ name: parsed.name, kind: "skill", description: parsed.description || "(skill)", body: parsed.body, source: file, builtin: src.builtin });
       } catch {
         /* nečitelný skill přeskočíme */
       }

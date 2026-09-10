@@ -27,18 +27,28 @@ export async function toolGrep(host: Host, attrs: Record<string, string>): Promi
     if (text.length > MAX_FILE_BYTES || text.includes("\u0000")) continue;
     scanned++;
     const lines = text.split(/\r?\n/);
+    const hits: number[] = [];
     for (let i = 0; i < lines.length && matches < MAX_MATCHES; i++) {
       if (!re.test(lines[i])) continue;
       matches++;
-      if (context) {
-        const from = Math.max(0, i - context);
-        const to = Math.min(lines.length - 1, i + context);
-        for (let k = from; k <= to; k++) out.push(`${f}:${k + 1}${k === i ? ":" : "-"} ${lines[k]}`);
-        out.push("--");
-      } else {
-        out.push(`${f}:${i + 1}: ${lines[i]}`);
-      }
+      hits.push(i);
     }
+    if (!context) {
+      for (const i of hits) out.push(`${f}:${i + 1}: ${lines[i]}`);
+      continue;
+    }
+    // s kontextem: sousední/překrývající se bloky se slévají do jednoho (jako grep -C)
+    const hitSet = new Set(hits);
+    let printedTo = -1;
+    for (const i of hits) {
+      const from = Math.max(0, i - context, printedTo + 1);
+      const to = Math.min(lines.length - 1, i + context);
+      if (from > to) continue;
+      if (printedTo >= 0 && from > printedTo + 1) out.push("--");
+      for (let k = from; k <= to; k++) out.push(`${f}:${k + 1}${hitSet.has(k) ? ":" : "-"} ${lines[k]}`);
+      printedTo = to;
+    }
+    if (hits.length) out.push("--");
   }
   const capped = matches >= MAX_MATCHES ? `\n… (capped at ${MAX_MATCHES} matches; narrow the pattern or glob)` : "";
   return { tool: "grep", attrs, status: "ok", output: (out.join("\n") || "(no matches)") + capped, meta: { matches, files: scanned } };

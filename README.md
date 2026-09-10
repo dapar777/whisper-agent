@@ -77,10 +77,32 @@ otázka); ✓ hotovo. Vložení se pozná díky vlastnictví schránky s odlože
 **Přerušení**: v banneru „Provádím akce“ je vidět běžící akce s časem a tlačítko Přerušit, které
 ukončí příkaz, přeskočí zbytek a modelu pošle, co proběhlo a kde to stálo.
 
-**Skilly** jsou markdown soubory v `.whisper/skills/` (projekt) nebo `~/.whisper/skills/`
+**Vestavěné skilly** (součást instalace, složka `skills/` v rozšíření):
+
+| Příkaz | Co udělá |
+|---|---|
+| `/init` | prozkoumá projekt a založí nebo doplní `WHISPER.md` (příkazy, struktura, konvence, úskalí); ověří testovací příkaz |
+| `/commit [rozsah]` | projde `git diff`, rozdělí nesouvisející změny, napíše zprávu ve stylu repa, commitne (bez push) |
+| `/review [soubory]` | code review necommitnutých změn nebo zadaných souborů; nic nemění |
+| `/test [oblast]` | spustí testy, opraví příčiny selhání (ne testy), doplní chybějící testy |
+| `/fix <chyba>` | reprodukuje chybu, najde příčinu, opraví ji, přidá regresní test |
+| `/explain [co]` | vysvětlí kód nebo architekturu; nic nemění |
+| `/docs [oblast]` | srovná dokumentaci s kódem, ověří příkazy v ní |
+| `/deps` | zastaralé/zranitelné závislosti, bezpečná aktualizace s testy |
+
+Za příkaz lze dopsat upřesnění (`/fix TypeError v storage.ts při prázdném souboru`). Vlastní skill
+stejného jména vestavěný přepíše.
+
+**Vlastní skilly** jsou markdown soubory v `.whisper/skills/` (projekt) nebo `~/.whisper/skills/`
 (uživatel), buď `název.md`, nebo `název/SKILL.md` s volitelným frontmatterem
 `name` a `description`. Vyvolají se přes `/název zadání`; jejich text se přiloží
 k zadání jako instrukce. Whisper je nezávislý na jiných nástrojích a jejich adresářích.
+
+**Ovládací příkazy**: `/plan`, `/suggest`, `/auto`, `/resend`, `/undo`, `/stop`, `/new` (vyčistí panel),
+`/status` (stav sezení, plán, schvalování), `/skills` (seznam skillů), `/help`.
+
+Při novém úkolu se plán z předchozího sezení odloží: hotový se smaže, rozpracovaný se archivuje do
+`.whisper/plan-<sezení>.md`.
 
 ## Příkazy
 
