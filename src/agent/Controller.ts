@@ -708,6 +708,37 @@ export class Controller implements vscode.Disposable {
     return active;
   }
 
+  /** Otevře soubor z odkazu v průběhu (cesta:řádek) a odroluje na dané místo. */
+  async openFileAt(rel: string, line?: number, col?: number): Promise<void> {
+    if (!rel) return;
+    const uri = vscode.Uri.joinPath(workspaceRoot(), rel);
+    try {
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(doc, { preview: true });
+      if (line && line > 0) {
+        const pos = new vscode.Position(Math.min(line - 1, doc.lineCount - 1), Math.max(0, (col ?? 1) - 1));
+        editor.selection = new vscode.Selection(pos, pos);
+        editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+      }
+    } catch {
+      vscode.window.setStatusBarMessage(`Whisper: soubor ${rel} nelze otevřít.`, 4000);
+    }
+  }
+
+  /** Přílohy čekajícího promptu (název + velikost), aby je bylo v panelu vidět. */
+  attachmentInfo(): { name: string; path: string; chars: number }[] {
+    const rels = this.session.current?.pendingAttachments ?? [];
+    return rels.map((rel) => {
+      let chars = 0;
+      try {
+        chars = fs.statSync(vscode.Uri.joinPath(workspaceRoot(), rel).fsPath).size;
+      } catch {
+        /* soubor mohl zmizet; velikost je jen doplňková informace */
+      }
+      return { name: rel.split("/").pop() ?? rel, path: rel, chars };
+    });
+  }
+
   /** Cesty souborů pro doplňování #odkazů v panelu (bez ignorovaných adresářů). */
   async workspaceFiles(): Promise<string[]> {
     try {

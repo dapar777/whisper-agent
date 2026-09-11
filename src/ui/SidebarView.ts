@@ -92,6 +92,8 @@ export class SidebarView implements vscode.WebviewViewProvider {
         return c.review.reject(m.path!);
       case "openDiff":
         return c.review.openDiff(m.path!);
+      case "openFile":
+        return c.openFileAt(m.path ?? "", Number(m.text) || undefined, Number(m.always) || undefined);
     }
   }
 
@@ -114,6 +116,8 @@ export class SidebarView implements vscode.WebviewViewProvider {
             plan: s.plan,
             promptChars: s.pendingPrompt.length,
             suggestions: s.suggestions ?? [],
+            attachments: c.attachmentInfo(),
+            historyItems: c.clipboard.lastHistoryItems,
           }
         : undefined,
       items: c.items.slice(-150),
@@ -258,6 +262,10 @@ export class SidebarView implements vscode.WebviewViewProvider {
   .composer.asking textarea { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
   .refbar { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; font-size: 11px; }
   .refbar .sub { color: var(--muted); }
+  .att { margin-top: 4px; font-size: 11.5px; line-height: 1.5; }
+  a.floc { color: var(--vscode-textLink-foreground, var(--info)); cursor: pointer; text-decoration: none; border-bottom: 1px dotted currentColor; }
+  a.floc:hover { color: var(--vscode-textLink-activeForeground, var(--info)); border-bottom-style: solid; }
+  code a.floc { color: inherit; }
   .ref { font-family: var(--mono); background: color-mix(in srgb, var(--info) 18%, var(--card)); border: 1px solid color-mix(in srgb, var(--info) 40%, var(--border)); border-radius: 4px; padding: 0 4px; }
   .askhint { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; font-size: 12.5px; }
   .askhint b { color: var(--accent); white-space: nowrap; }
@@ -341,7 +349,10 @@ export class SidebarView implements vscode.WebviewViewProvider {
   function md(text) {
     const lines = String(text ?? "").split("\\n");
     let html = ""; let inList = false; let inPre = false; let pre = [];
-    const inline = (s) => esc(s).replace(/\`([^\`]+)\`/g, "<code>$1</code>").replace(/\\*\\*([^*]+)\\*\\*/g, "<b>$1</b>");
+    // cesty k souborům (i s :řádkem) se mění v odkazy, které soubor otevřou na daném místě
+    const linkFiles = (html) => html.replace(/(^|[\\s(>"'\\[])([\\w.\\-]+(?:\\/[\\w.\\-]+)+\\.[a-zA-Z0-9]{1,8})(?::(\\d+))?(?::(\\d+))?/g,
+      (m, pre, path, line, col) => pre + '<a class="floc" data-path="' + path + '" data-line="' + (line || "") + '" data-col="' + (col || "") + '" title="Otevřít v editoru">' + path + (line ? ":" + line : "") + (col ? ":" + col : "") + "</a>");
+    const inline = (s) => linkFiles(esc(s).replace(/\`([^\`]+)\`/g, "<code>$1</code>").replace(/\\*\\*([^*]+)\\*\\*/g, "<b>$1</b>"));
     for (const raw of lines) {
       if (raw.trim().startsWith("\`\`\`")) { if (inPre) { html += "<pre>" + esc(pre.join("\\n")) + "</pre>"; pre = []; } inPre = !inPre; continue; }
       if (inPre) { pre.push(raw); continue; }
@@ -399,9 +410,18 @@ export class SidebarView implements vscode.WebviewViewProvider {
       banner.hidden = false; banner.className = "banner " + cls;
       const sent = state.promptPhase === "sent";
       $("bannerTitle").textContent = (s.state === "waitingForReply" ? (sent ? "Čekám na odpověď modelu" : "Prompt je ve schránce, vložte ho do chatu") + " · kolo " + s.turn : title);
-      $("bannerSub").textContent = s.state === "waitingForReply"
-        ? (sent ? "Prompt byl vložen. Až model odpoví, zkopírujte odpověď (Ctrl+C), Whisper ji sám převezme." : "Vložte prompt do chatu (Ctrl+V); Whisper pozná, že byl vložen.") + " (" + kb(s.promptChars) + " znaků)"
-        : sub;
+      if (s.state === "waitingForReply") {
+        const att = s.attachments || [];
+        const base = (sent ? "Prompt byl vložen. Až model odpoví, zkopírujte odpověď (Ctrl+C), Whisper ji sám převezme." : "Vložte prompt do chatu (Ctrl+V); Whisper pozná, že byl vložen.") + " (" + kb(s.promptChars) + " znaků)";
+        // přílohy (svazky souborů) musí být vidět, jinak uživatel neví, že má vložit i je
+        $("bannerSub").innerHTML = esc(base) + (att.length
+          ? '<div class="att">📎 ' + esc(att.length > 1 ? att.length + " přílohy" : "příloha") + ": " +
+            att.map((a) => '<span class="ref">' + esc(String(a.name || a)) + "</span>" + (a.chars ? ' <span class="sub">(' + kb(a.chars) + ")</span>" : "")).join(", ") +
+            (s.historyItems && s.historyItems.length
+              ? '<br><span class="sub">Vložte Ctrl+V (prompt) a pak svazek z historie schránky: <b>Win+V</b>.</span>'
+              : '<br><span class="sub">Přiloženo jako soubor ve schránce; jedno Ctrl+V vloží prompt i přílohu.</span>') + "</div>"
+          : "");
+      } else $("bannerSub").textContent = sub;
       const b = $("bannerBtns"); b.innerHTML = "";
       if (s.state === "waitingForReply") {
         b.innerHTML = '<button class="primary small" data-act="copyAgain">📋 Zkopírovat prompt znovu</button><button class="small" data-act="showPrompt">Zobrazit prompt</button><button class="small" data-act="pasteClip">Vzít odpověď ze schránky</button><button class="small" data-act="resend" title="Pro nový chat: preambule + shrnutí dosavadního průběhu">↻ Poslat celý kontext znovu</button><button class="ghost small" data-act="correction" title="Když model odpověděl bez bloku akcí a nebyla to otázka">Poslat opravný prompt</button>';
@@ -428,6 +448,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
     for (const a of state.approvals.pending) parts.push(renderApproval(a));
     $("stream").innerHTML = parts.join("");
     for (const x of chat.querySelectorAll("[data-act]")) x.onclick = onAct;
+    for (const a of chat.querySelectorAll("a.floc")) a.onclick = (e) => { e.preventDefault(); send("openFile", { path: a.dataset.path, text: a.dataset.line || "", always: a.dataset.col || "" }); };
     // banner i karty jsou uvnitř #chat a dorenderují se níž, proto rolujeme až po jejich vykreslení
     if (stick || state.items.length !== lastCount) requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; });
     lastCount = state.items.length;

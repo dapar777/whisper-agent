@@ -106,6 +106,15 @@ vložený do pravidel v promptu:
 | `prefer` | svazek už od tří souborů a vždy, když ještě nevíš, které soubory potřebuješ |
 | `always` | každý úkol začni svazkem s relevantním kódem, jednotlivé čtení jen na doplnění |
 
+Dokud se čeká na odpověď, stavová karta vypisuje i **přílohy** (název a velikost svazku) a to,
+jak je vložit: buď jedním `Ctrl+V` (režim `file`), nebo `Ctrl+V` a pak svazek z historie schránky
+přes `Win+V` (režim `history`). Když se svazek do historie vložit nepodaří, napíše se to do logu
+a svazek se přiloží jako soubor, místo aby tiše zmizel.
+
+**Klikací místa v kódu**: cesty, které model napíše do stavu, plánu nebo shrnutí
+(`src/tools/bundle.ts:74`), jsou v panelu odkazy; kliknutím se soubor otevře a odroluje na daný
+řádek. Samotný název bez adresáře ani čísla verzí se nelinkují.
+
 **Odpověď v souboru** (`whisper.reply.watchDir`): kromě schránky lze odpověď modelu doručit
 jako **nový soubor** ve sledované složce, třeba ve složce stahování prohlížeče. Sledují se jen
 soubory vzniklé po odeslání promptu, název musí vyhovovat `whisper.reply.filePattern`

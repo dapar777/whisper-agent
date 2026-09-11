@@ -53,6 +53,8 @@ export class ClipboardBridge implements vscode.Disposable {
   private waiter: { resolve: (text: string) => void; reject: (e: Error) => void } | undefined;
   private fileWatcher: FileReplyWatcher | undefined;
   private readonly logEmitter = new vscode.EventEmitter<string>();
+  /** svazky, které se v tomto kole podařilo vložit do historie schránky (Win+V) */
+  lastHistoryItems: string[] = [];
   /** hlášky pro log v panelu (sledování složky s odpověďmi) */
   readonly onDidLog = this.logEmitter.event;
 
@@ -71,17 +73,26 @@ export class ClipboardBridge implements vscode.Disposable {
     const binary = attachments.filter((a) => !/\.(txt|md)$/i.test(a));
     const delivery = cfg<"history" | "file">("bundle.delivery", "history");
     if (delivery === "history" && textual.length && binary.length === 0 && !(threshold > 0 && text.length > threshold)) {
+      const copied: string[] = [];
       for (const a of textual) {
         try {
-          const content = await readText(vscode.Uri.joinPath(workspaceRoot(), a));
+          // svazek čteme přímo ze souboru (readText preferuje otevřený editor, což je tu zbytečné)
+          const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(workspaceRoot(), a));
+          const content = Buffer.from(bytes).toString("utf8");
           await vscode.env.clipboard.writeText(content);
           // historie schránky si položku uloží až po chvíli; bez pauzy by ji prompt přepsal dřív
           await new Promise((r) => setTimeout(r, 400));
-        } catch {
-          /* svazek zůstává na disku; prompt na něj odkazuje */
+          copied.push(a);
+        } catch (e) {
+          // tichý pád by uživateli vzal přílohu bez varování: nahlásíme a necháme ji jako soubor
+          this.logEmitter.fire(`Svazek ${a} se nepodařilo dát do historie schránky (${(e as Error).message}); zkusím ho přiložit jako soubor.`);
         }
       }
-      attachments = [];
+      // do historie šlo jen to, co se povedlo; zbytek pokračuje cestou souborů
+      attachments = attachments.filter((a) => !copied.includes(a));
+      this.lastHistoryItems = copied;
+    } else {
+      this.lastHistoryItems = [];
     }
     const wantFile = attachments.length > 0 || (threshold > 0 && text.length > threshold);
     if (wantFile && process.platform === "win32") {
