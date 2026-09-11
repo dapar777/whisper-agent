@@ -72,6 +72,14 @@ na Unixu se nastaví práva na spuštění a v panelu se vypíše příkaz ke sp
 z `lang=`, ze shebangu nebo z kódu.
 Projektová pravidla lze psát i ručně do `.whisper/rules.md` (jedno na řádek).
 
+**Odkazy na soubory** (jako `#file` v Copilotu): do zadání, poznámky i odpovědi můžete napsat
+`#cesta/k/souboru.ts`, `#soubor.ts:40-80` (jen řádky), `#soubor.ts:120` (řádek s okolím),
+`#file` (soubor otevřený v editoru) nebo `#selection` (výběr v editoru). Po napsání `#` se nabízejí
+soubory projektu s doplňováním, nad vstupem jsou tlačítka *＋ soubor* a *＋ výběr*. Obsah se přiloží
+k promptu s čísly řádků, takže model nemusí soubor teprve hledat a může rovnou editovat. Odkaz
+zůstává v textu, takže je v průběhu vidět, co jste přiložili. Neexistující cesta se ohlásí u toho
+odkazu a nabídne podobné soubory, zbytek se přiloží normálně.
+
 **Přímý dialog** (`whisper.ask.direct`, výchozí zapnuto): model se smí ptát přímo v chatu
 a vy tam odpovíte nebo cokoli dopíšete; v dalším bloku to zapíše akcemi `<dialog>`, takže
 výměna je v průběhu i v transkriptu. Odpověď bez bloku akcí se bere jako otázka v chatu,

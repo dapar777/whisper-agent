@@ -122,6 +122,8 @@ export class SidebarView implements vscode.WebviewViewProvider {
       approvals: { mode: c.approvals.mode, pending: c.approvals.pendingRequests, history: c.approvals.history.slice(-8), patterns: c.approvals.allowPatterns() },
       review: c.review.pendingFiles.map((f) => ({ path: f.path, kind: f.kind, hunks: hunks.filter((h) => h.path === f.path).length })),
       commands: c.commands().map((x) => ({ name: x.name, kind: x.kind, description: x.description })),
+      files: await c.workspaceFiles(),
+      editor: c.editorInfo(),
       log: c.log.slice(-80),
     };
     void this.view.webview.postMessage({ type: "state", state });
@@ -254,6 +256,9 @@ export class SidebarView implements vscode.WebviewViewProvider {
   .composer .box { display: flex; gap: 6px; align-items: flex-end; }
   .composer.asking { background: color-mix(in srgb, var(--accent) 10%, var(--bg)); border-top: 2px solid var(--accent); }
   .composer.asking textarea { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+  .refbar { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; font-size: 11px; }
+  .refbar .sub { color: var(--muted); }
+  .ref { font-family: var(--mono); background: color-mix(in srgb, var(--info) 18%, var(--card)); border: 1px solid color-mix(in srgb, var(--info) 40%, var(--border)); border-radius: 4px; padding: 0 4px; }
   .askhint { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; font-size: 12.5px; }
   .askhint b { color: var(--accent); white-space: nowrap; }
   .askhint .q { color: var(--fg); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
@@ -311,6 +316,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
     <div id="popup" class="popup" hidden></div>
     <div id="askHint" class="askhint" hidden><b>❓ Odpověď pro model:</b><span id="askText" class="q"></span></div>
     <div id="askOptions" class="btns" hidden></div>
+    <div id="refbar" class="refbar" hidden><span class="sub">Kontext:</span><button id="refFile" class="small ghost" title="Přidat odkaz na soubor otevřený v editoru">＋ soubor</button><button id="refSel" class="small ghost" hidden title="Přidat odkaz na výběr v editoru">＋ výběr</button><span id="refHint" class="sub"></span></div>
     <div class="box">
       <button id="slash" class="slashbtn" title="Příkazy a skilly">/</button>
       <textarea id="input" rows="2" placeholder="Zadejte úkol… (/ pro příkazy, Enter odešle, Shift+Enter nový řádek)"></textarea>
@@ -459,6 +465,18 @@ export class SidebarView implements vscode.WebviewViewProvider {
       input.placeholder = "Zadejte úkol… (/ pro příkazy, Enter odešle, Shift+Enter nový řádek)";
     }
     wasAsking = asking;
+    // lišta kontextu: co je otevřené v editoru a co už je odkázané v textu
+    const ed = state.editor;
+    $("refbar").hidden = !ed;
+    if (ed) {
+      const short = (ed.path || "").split("/").pop();
+      $("refFile").textContent = "＋ " + (short || "soubor");
+      $("refFile").title = "Přidat odkaz na " + (ed.path || "aktivní soubor");
+      $("refSel").hidden = !ed.selection;
+      if (ed.selection) $("refSel").textContent = "＋ výběr " + ed.selection;
+      const used = input.value.match(/#[^\\s#]+/g) || [];
+      $("refHint").innerHTML = used.length ? used.map((r) => '<span class="ref">' + esc(r) + "</span>").join(" ") : "napište # pro odkaz na soubor";
+    }
     $("log").textContent = state.log.join("\\n");
   }
 
@@ -535,18 +553,51 @@ export class SidebarView implements vscode.WebviewViewProvider {
   }
 
   // ---------- composer + lomítka ----------
-  const input = $("input"); const popup = $("popup"); let sel = 0; let popupItems = [];
+  const input = $("input"); const popup = $("popup"); let sel = 0; let popupItems = []; let refItems = []; let popupMode = "cmd";
   function currentSlash() {
     const v = input.value; const pos = input.selectionStart;
     const before = v.slice(0, pos);
     const m = before.match(/(^|\\s)\\/([\\w.-]*)$/);
     return m ? { prefix: m[2], start: pos - m[2].length - 1 } : null;
   }
+  function currentRef() {
+    const v = input.value; const pos = input.selectionStart;
+    const m = v.slice(0, pos).match(/(^|\\s)#([^\\s#]*)$/);
+    return m ? { prefix: m[2], start: pos - m[2].length - 1 } : null;
+  }
+  function showRefPopup(prefix) {
+    const p = (prefix || "").toLowerCase();
+    const special = [
+      { name: "file", desc: "aktivní soubor v editoru" },
+      { name: "selection", desc: "výběr v editoru" },
+    ].filter((x) => x.name.startsWith(p));
+    const files = (state.files || []).filter((f) => f.toLowerCase().includes(p)).slice(0, 40);
+    // přesnější shody (název souboru) napřed
+    files.sort((a, b) => {
+      const an = a.split("/").pop().toLowerCase().startsWith(p) ? 0 : 1;
+      const bn = b.split("/").pop().toLowerCase().startsWith(p) ? 0 : 1;
+      return an - bn || a.length - b.length;
+    });
+    refItems = [...special.map((x) => ({ ref: x.name, desc: x.desc })), ...files.slice(0, 14).map((f) => ({ ref: f, desc: "" }))].slice(0, 14);
+    if (!refItems.length) { popup.hidden = true; return; }
+    sel = Math.min(sel, refItems.length - 1);
+    popupMode = "ref";
+    popup.innerHTML = refItems.map((c, i) => '<div class="it' + (i === sel ? " sel" : "") + '" data-i="' + i + '"><span class="n">#' + esc(c.ref) + '</span><span class="d">' + esc(c.desc) + "</span></div>").join("");
+    for (const x of popup.querySelectorAll(".it")) x.onclick = () => acceptRef(Number(x.dataset.i));
+    popup.hidden = false;
+  }
+  function acceptRef(i) {
+    const c = refItems[i]; if (!c) return;
+    const cr = currentRef(); if (!cr) return;
+    input.value = input.value.slice(0, cr.start) + "#" + c.ref + " " + input.value.slice(input.selectionStart);
+    popup.hidden = true; popupMode = "cmd"; input.focus();
+  }
   function showPopup(prefix, forceAll) {
     const p = (prefix || "").toLowerCase();
     popupItems = state.commands.filter((c) => forceAll || c.name.toLowerCase().startsWith(p)).sort((a, b) => a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "builtin" ? -1 : 1).slice(0, 14);
     if (!popupItems.length) { popup.hidden = true; return; }
     sel = Math.min(sel, popupItems.length - 1);
+    popupMode = "cmd";
     popup.innerHTML = popupItems.map((c, i) => '<div class="it' + (i === sel ? " sel" : "") + '" data-i="' + i + '"><span class="n">/' + esc(c.name) + '</span><span class="d">' + esc(c.description) + (c.kind === "skill" ? " · skill" : "") + "</span></div>").join("");
     for (const x of popup.querySelectorAll(".it")) x.onclick = () => accept(Number(x.dataset.i));
     popup.hidden = false;
@@ -558,17 +609,32 @@ export class SidebarView implements vscode.WebviewViewProvider {
     else { input.value = "/" + c.name + " " + input.value; }
     popup.hidden = true; input.focus();
   }
-  input.addEventListener("input", () => { const cs = currentSlash(); if (cs) { sel = 0; showPopup(cs.prefix); } else popup.hidden = true; });
+  input.addEventListener("input", () => {
+    const cr = currentRef();
+    if (cr) { sel = 0; showRefPopup(cr.prefix); return; }
+    const cs = currentSlash();
+    if (cs) { sel = 0; showPopup(cs.prefix); } else popup.hidden = true;
+  });
   input.addEventListener("keydown", (e) => {
     if (!popup.hidden) {
-      if (e.key === "ArrowDown") { sel = (sel + 1) % popupItems.length; showPopup(currentSlash()?.prefix, !currentSlash()); e.preventDefault(); return; }
-      if (e.key === "ArrowUp") { sel = (sel - 1 + popupItems.length) % popupItems.length; showPopup(currentSlash()?.prefix, !currentSlash()); e.preventDefault(); return; }
-      if (e.key === "Tab" || e.key === "Enter") { accept(sel); e.preventDefault(); return; }
+      const n = popupMode === "ref" ? refItems.length : popupItems.length;
+      const redraw = () => popupMode === "ref" ? showRefPopup(currentRef()?.prefix) : showPopup(currentSlash()?.prefix, !currentSlash());
+      if (e.key === "ArrowDown") { sel = (sel + 1) % n; redraw(); e.preventDefault(); return; }
+      if (e.key === "ArrowUp") { sel = (sel - 1 + n) % n; redraw(); e.preventDefault(); return; }
+      if (e.key === "Tab" || e.key === "Enter") { popupMode === "ref" ? acceptRef(sel) : accept(sel); e.preventDefault(); return; }
       if (e.key === "Escape") { popup.hidden = true; e.preventDefault(); return; }
     }
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
   });
   function submit() { const t = input.value.trim(); if (!t) return; send("send", { text: t }); input.value = ""; popup.hidden = true; }
+  function addRef(token) {
+    const v = input.value;
+    if (v.includes("#" + token)) { input.focus(); return; }
+    input.value = (v ? v.replace(/\s*$/, "") + " " : "") + "#" + token + " ";
+    input.focus(); popup.hidden = true;
+  }
+  $("refFile").onclick = () => addRef((state.editor && state.editor.path) || "file");
+  $("refSel").onclick = () => addRef("selection");
   $("send").onclick = submit;
   $("slash").onclick = () => { if (!popup.hidden) { popup.hidden = true; return; } sel = 0; showPopup("", true); input.focus(); };
   $("modeBtn").onclick = () => { $("exceptions").hidden = !$("exceptions").hidden; };

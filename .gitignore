@@ -4,3 +4,7 @@ out/
 .whisper/
 .tmp/
 # sestavený balíček se verzuje záměrně (instalace bez buildu)
+# výstupy rešeršních skillů spuštěných v tomto adresáři (nepatří do repa)
+Chrudim/
+# lokální nastavení z testování rozšíření (nesmí se stát výchozím pro ostatní)
+.vscode/settings.json

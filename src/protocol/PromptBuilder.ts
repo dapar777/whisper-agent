@@ -38,6 +38,8 @@ export interface ProjectContext {
   rules?: string[];
   /** dostupné skilly (jen názvy a popisy) */
   skills?: { name: string; description: string }[];
+  /** obsah souborů, na které uživatel odkázal přes #soubor (blok už hotový) */
+  refs?: string;
   /** co už je nakonfigurované (pro návrhy, aby se neopakovaly) */
   existing?: {
     hooks?: string[];
@@ -350,6 +352,9 @@ export function buildContext(ctx: ProjectContext): string {
     parts.push(`## Active editor: ${ctx.active.path}${ctx.active.selectionRange ? ` (selection ${ctx.active.selectionRange})` : ""}`);
     if (ctx.active.selection) parts.push("", ctx.active.selection, "");
     parts.push("");
+  }
+  if (ctx.refs?.trim()) {
+    parts.push(ctx.refs.trim(), "");
   }
   if (ctx.diagnostics?.trim()) {
     parts.push("## Current diagnostics", "", ctx.diagnostics.trim(), "");

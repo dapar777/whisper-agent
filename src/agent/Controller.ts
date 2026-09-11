@@ -23,6 +23,8 @@ import { Checkpoint } from "../safety/Checkpoint";
 import { Session } from "../session/Session";
 import { Suggestion } from "../session/SessionData";
 import { loadSkills, saveSkill } from "../skills/Skills";
+import { renderRefs, resolveRefs } from "../tools/refs";
+import { parseRefs } from "../protocol/refs";
 import { saveScript } from "../skills/Scripts";
 import { PLAN_FILE } from "../tools/ToolRunner";
 import { ChangeListener } from "../tools/ToolRunner";
@@ -188,9 +190,11 @@ export class Controller implements vscode.Disposable {
       return;
     }
     if (s && (s.state === "waitingForReply" || s.state === "executing") && parsed.text) {
-      s.notes = [...(s.notes ?? []), parsed.text];
+      // #odkazy v poznámce se vyřeší hned, ať je obsah v příštím promptu
+      const noteText = parsed.text + (await this.refsBlock(parsed.text));
+      s.notes = [...(s.notes ?? []), noteText];
       this.session.update({ notes: s.notes });
-      this.pushItem({ kind: "note", text: parsed.text });
+      this.pushItem({ kind: "note", text: parsed.text, data: { refs: parseRefs(parsed.text).map((r) => r.raw) } });
       await this.transcript?.append({ session: s.id, kind: "note", text: parsed.text });
       return;
     }
@@ -241,6 +245,7 @@ export class Controller implements vscode.Disposable {
     await engine.archivePlan(previous);
     await this.transcript?.append({ session: s.id, kind: "task", text: task, data: { planMode } });
     const ctx = await engine.gatherContext(this.activeEditor(), this.skills.map((k) => ({ name: k.name, description: k.description })));
+    ctx.refs = renderRefs(await resolveRefs(engine.hostRef(), original ?? task, this.activeEditor()));
     const prompt = await engine.initialPrompt(s, ctx);
     void this.loop(prompt);
   }
@@ -433,7 +438,7 @@ export class Controller implements vscode.Disposable {
     if (!s || s.state !== "awaitingUser" || !this.engine) return;
     this.pushItem({ kind: "answer", text: answer });
     await this.transcript?.append({ session: s.id, kind: "answer", text: answer });
-    const prompt = this.engine.answerPrompt(s, answer, this.drainNotes());
+    const prompt = this.engine.answerPrompt(s, answer + (await this.refsBlock(answer)), this.drainNotes());
     this.session.update({ pendingQuestion: undefined, pendingOptions: undefined, pendingMulti: undefined });
     void this.loop(prompt);
   }
@@ -701,6 +706,35 @@ export class Controller implements vscode.Disposable {
       active.selectionRange = `${sel.start.line + 1}-${sel.end.line + 1}`;
     }
     return active;
+  }
+
+  /** Cesty souborů pro doplňování #odkazů v panelu (bez ignorovaných adresářů). */
+  async workspaceFiles(): Promise<string[]> {
+    try {
+      const host = this.host ?? this.newEngine().hostRef();
+      return await host.listFiles("**/*", 4000);
+    } catch {
+      return [];
+    }
+  }
+
+  /** Co je právě otevřené v editoru (pro tlačítka „přidat soubor / výběr“). */
+  editorInfo(): { path?: string; selection?: string } | undefined {
+    const a = this.activeEditor();
+    if (!a) return undefined;
+    return { path: a.path, selection: a.selectionRange };
+  }
+
+  /** Obsah souborů odkázaných přes #soubor, jako příloha k textu uživatele. */
+  private async refsBlock(text: string): Promise<string> {
+    if (!parseRefs(text).length) return "";
+    try {
+      const host = this.host ?? this.newEngine().hostRef();
+      const block = renderRefs(await resolveRefs(host, text, this.activeEditor()));
+      return block ? "\n\n" + block : "";
+    } catch {
+      return "";
+    }
   }
 
   private drainNotes(): string[] {
