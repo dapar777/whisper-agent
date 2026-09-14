@@ -15,7 +15,7 @@ import {
 } from "../global/GlobalConfig";
 import { addHook, loadHooks } from "../hooks/Hooks";
 import { VsCodeHost } from "../host/VsCodeHost";
-import { BundleUsage, buildCorrectionPrompt, ProjectContext } from "../protocol/PromptBuilder";
+import { BundleUsage, buildCorrectionPrompt, classifyProse, ProjectContext } from "../protocol/PromptBuilder";
 import { isOwnPrompt, looksLikeReply } from "../protocol/replyDetect";
 import { BUILTIN_COMMANDS, composeTask, parseInput, SlashCommand } from "../protocol/slash";
 import { ReviewManager } from "../review/ReviewManager";
@@ -187,6 +187,11 @@ export class Controller implements vscode.Disposable {
     const planMode = parsed.commands.includes("plan");
     if (s && s.state === "awaitingUser" && parsed.text) {
       await this.answerQuestion(parsed.text);
+      return;
+    }
+    // vložený text, který je zjevně odpověď modelu bez bloku (rozepsaný <whisper>, dlouhý dokument), není poznámka
+    if (s && s.state === "waitingForReply" && parsed.commands.length === 0 && (raw.includes("<whisper") || (raw.length > 1500 && classifyProse(raw) === "document"))) {
+      this.submitReply(raw);
       return;
     }
     if (s && (s.state === "waitingForReply" || s.state === "executing") && parsed.text) {
@@ -519,23 +524,25 @@ export class Controller implements vscode.Disposable {
     this.cts = new vscode.CancellationTokenSource();
     const token = this.cts.token;
     const engine = this.engine!;
-    let noBlockStreak = 0;
+    // copy = nový prompt do schránky a do panelu; recopy = obnova (stejný prompt znovu do schránky, bez položky);
+    // none = čekat dál a schránku nechat být (uživatel právě odpovídá modelu v chatu)
+    let copyMode: "copy" | "recopy" | "none" = skipCopy ? "recopy" : "copy";
     try {
       while (!token.isCancellationRequested) {
         const s = this.session.current;
         if (!s) return;
-        if (skipCopy) attachments = s.pendingAttachments ?? [];
+        if (copyMode !== "copy") attachments = s.pendingAttachments ?? [];
         this.session.update({ state: "waitingForReply", pendingPrompt: prompt, pendingAttachments: attachments });
-        if (skipCopy) {
+        if (copyMode === "recopy") {
           this.clipboard.copyPrompt(prompt, s.turn, attachments).catch(() => undefined);
-          skipCopy = false;
-        } else {
+        } else if (copyMode === "copy") {
           const mode = await this.clipboard.copyPrompt(prompt, s.turn, attachments);
           this.setPromptPhase("fresh");
           this.pushItem({ kind: "prompt", turn: s.turn, text: mode === "file" ? "soubor" : "text", data: { chars: prompt.length, mode, attachments } });
           await this.transcript?.append({ session: s.id, kind: "prompt", turn: s.turn, data: { chars: prompt.length } });
           this.notifyCopied(prompt, s.turn, mode);
         }
+        copyMode = "copy";
 
         let replyText: string;
         try {
@@ -547,29 +554,31 @@ export class Controller implements vscode.Disposable {
         this.setPromptPhase(undefined);
         if (isOwnPrompt(replyText)) {
           this.logLine("⚠ Ve schránce je náš prompt, ne odpověď modelu; čekám dál.");
-          skipCopy = true;
+          copyMode = "none";
           continue;
         }
-        const parsed = engine.parse(replyText);
+        const parsed = engine.parse(replyText, s.turn);
         if (parsed.turn !== null && parsed.turn !== s.turn) {
           const pick = await vscode.window.showWarningMessage(`Odpověď vypadá jako kolo ${parsed.turn}, ale čekám kolo ${s.turn}. Použít ji přesto?`, "Použít", "Ignorovat");
           if (pick !== "Použít") {
-            skipCopy = true;
+            copyMode = "none";
             continue;
           }
         }
         await this.transcript?.append({ session: s.id, kind: "reply", turn: s.turn, text: replyText.slice(0, 20000) });
         if (parsed.prose) this.pushItem({ kind: "status", turn: s.turn, text: parsed.prose.slice(0, 600) });
-        // přímý dialog: odpověď bez bloku je nejspíš otázka položená v chatu, ne chyba protokolu
-        if (parsed.actions.length === 0 && cfg<boolean>("ask.direct", true) && noBlockStreak < 1) {
-          noBlockStreak++;
+        // přímý dialog: KRÁTKÁ odpověď bez bloku je nejspíš otázka položená v chatu, ne chyba protokolu;
+        // dokument nebo delší text jde do enginu (záchrana dokumentu / opravný prompt s kontextem)
+        const kind = parsed.actions.length ? "actions" : classifyProse(parsed.prose || replyText);
+        if (kind === "question" && cfg<boolean>("ask.direct", true) && (s.noBlockReplies ?? 0) < 1) {
+          this.session.update({ noBlockReplies: (s.noBlockReplies ?? 0) + 1 });
           this.pushItem({ kind: "dialog", turn: s.turn, text: replyText.trim().slice(0, 1500), data: { from: "model", live: true } });
           this.pushItem({ kind: "status", text: "Model odpověděl bez bloku akcí, nejspíš se ptá přímo v chatu. Odpovězte mu tam a zkopírujte jeho další odpověď. Pokud jde o chybu, použijte „Poslat opravný prompt“." });
-          skipCopy = true;
+          copyMode = "none";
           continue;
         }
-        noBlockStreak = parsed.actions.length ? 0 : noBlockStreak;
         if (parsed.errors.length) this.pushItem({ kind: "error", turn: s.turn, text: parsed.errors.join("\n") });
+        if (parsed.notes.length) this.pushItem({ kind: "status", turn: s.turn, text: "Agent dorovnal: " + parsed.notes.join(" ") });
         if (parsed.actions.length) {
           this.session.update({ state: "executing" });
           this.pushItem({ kind: "actions", turn: s.turn, text: describeActions(parsed.actions), data: parsed.actions.map((a) => ({ tool: a.tool, target: a.attrs.path ?? a.attrs.pattern ?? a.attrs.title ?? (a.tool === "run" ? (a.body ?? "").trim().slice(0, 120) : "") })) });

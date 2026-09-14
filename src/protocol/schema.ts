@@ -63,9 +63,9 @@ export const TOOLS: ToolDef[] = [
     hasBody: true,
     attrs: [
       { name: "path", required: true, doc: "workspace-relative path; parent dirs are created" },
-      { name: "end", required: false, doc: "custom end marker if the body itself contains </write>" },
+      { name: "end", required: false, doc: 'optional end marker on its own line (e.g. end="EOF_7q") when you want to be extra safe; normally NOT needed even if the body contains </write>, code fences or <whisper> examples' },
     ],
-    bodyDoc: "the complete new file content, verbatim (no escaping, no code fences)",
+    bodyDoc: "the complete new file content, verbatim: no HTML escaping, no outer code fence; the body may contain anything, including code fences, SEARCH markers, </write> or <whisper> examples",
     doc: "Create or fully overwrite a file. Prefer <edit> for existing files.",
     example:
       '<write path="src/utils/email.ts">\nexport function isValidEmail(v: string) {\n  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v);\n}\n</write>',
@@ -73,10 +73,14 @@ export const TOOLS: ToolDef[] = [
   {
     name: "edit",
     hasBody: true,
-    attrs: [{ name: "path", required: true, doc: "existing file" }],
+    attrs: [
+      { name: "path", required: true, doc: "existing file" },
+      { name: "section", required: false, doc: 'markdown only: heading of the section to replace, e.g. "## Rizika" or just "Rizika"; the body is then the COMPLETE new section (keep the heading line, or omit it to keep the old one) instead of hunks' },
+      { name: "insert", required: false, doc: 'with section=: "before" or "after" = insert the body (which must start with its own heading) as a NEW section next to that one instead of replacing it' },
+    ],
     bodyDoc:
-      "one or more SEARCH/REPLACE hunks; SEARCH must match the file text exactly (whitespace-tolerant fallback exists); keep SEARCH short but unique",
-    doc: "Modify an existing file with SEARCH/REPLACE hunks.",
+      "one or more SEARCH/REPLACE hunks; SEARCH must match the file text exactly (whitespace-tolerant fallback exists); keep SEARCH short but unique. With section=: the whole new section text.",
+    doc: "Modify an existing file with SEARCH/REPLACE hunks, or (markdown) replace a whole section by its heading.",
     example:
       '<edit path="src/forms/RegisterForm.tsx">\n<<<<<<< SEARCH\n  const canSubmit = name.length > 0;\n=======\n  const canSubmit = name.length > 0 && isValidEmail(email);\n>>>>>>> REPLACE\n</edit>',
   },
@@ -238,6 +242,10 @@ export interface ParsedReply {
   actions: Action[];
   /** chyby parsování, které se modelu vrátí k opravě */
   errors: string[];
+  /** poznámky (ne chyby): co agent při čtení odpovědi sám opravil */
+  notes: string[];
   /** prosté vyjádření mimo blok (uložíme do logu) */
   prose: string;
+  /** celý původní text odpovědi (pro záchranu dokumentu, když blok chybí nebo je rozbitý) */
+  raw: string;
 }

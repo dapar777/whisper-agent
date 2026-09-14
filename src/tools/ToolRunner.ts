@@ -1,5 +1,6 @@
 import { Host } from "../host/Host";
 import { applyHunks, parseHunks } from "../protocol/edit";
+import { applySection } from "../protocol/section";
 import { OK_RUN_OUTPUT_MAX } from "../protocol/PromptBuilder";
 import { Action, ActionResult } from "../protocol/schema";
 import { isProtectedPath } from "../safety/Policy";
@@ -187,15 +188,33 @@ export class ToolRunner {
     if (!(await this.host.exists(path))) {
       return { tool: "edit", attrs: a.attrs, status: "error", output: `File not found: ${path}. Use <write> to create it.` };
     }
-    const hunks = parseHunks(a.body ?? "");
-    if (hunks.length === 0) {
-      return { tool: "edit", attrs: a.attrs, status: "error", output: "No SEARCH/REPLACE hunks found. Format:\n<<<<<<< SEARCH\n(old)\n=======\n(new)\n>>>>>>> REPLACE" };
-    }
     const baseline = await this.host.readFile(path);
+    const isDoc = /\.(md|markdown|txt)$/i.test(path);
+    // markdown: nahrazení celé sekce podle nadpisu (bez hunků)
+    if (a.attrs.section) {
+      const mode = a.attrs.insert === "before" || a.attrs.insert === "after" ? a.attrs.insert : "replace";
+      const sec = applySection(baseline, a.attrs.section, a.body ?? "", mode);
+      if (sec.error) return { tool: "edit", attrs: a.attrs, status: "error", output: sec.error };
+      if (!(await this.approve(path, baseline, sec.content))) {
+        return { tool: "edit", attrs: a.attrs, status: "denied", output: "The user declined this change." };
+      }
+      this.listener?.onWillChange(path, "modify", baseline, turn);
+      await this.host.writeFile(path, sec.content);
+      this.markChanged(outcome, path);
+      const r = sec.replaced!;
+      const what = mode === "replace" ? `Section "${r.heading}" (lines ${r.from}-${r.to}) replaced.` : `New section inserted ${mode} "${r.heading}" (now lines ${r.from}-${r.to}).`;
+      return { tool: "edit", attrs: a.attrs, status: "ok", output: what, meta: { section: r.heading, lines: `${r.from}-${r.to}` } };
+    }
+    const hunks = parseHunks(a.body ?? "");
+    const sectionHint = isDoc ? '\n\nTip: for a markdown document, <edit path="…" section="## Heading"> replaces the whole section without any SEARCH text.' : "";
+    if (hunks.length === 0) {
+      return { tool: "edit", attrs: a.attrs, status: "error", output: "No SEARCH/REPLACE hunks found. Format:\n<<<<<<< SEARCH\n(old)\n=======\n(new)\n>>>>>>> REPLACE" + sectionHint };
+    }
     const res = applyHunks(baseline, hunks);
     const meta = { hunks: `${res.applied}/${hunks.length}` };
+    const notes = res.notes.join("\n");
     if (res.applied === 0) {
-      return { tool: "edit", attrs: a.attrs, status: "error", output: res.failures.map((f) => `Hunk ${f.hunk}: ${f.reason}`).join("\n\n"), meta };
+      return { tool: "edit", attrs: a.attrs, status: "error", output: res.failures.map((f) => `Hunk ${f.hunk}: ${f.reason}`).join("\n\n") + sectionHint, meta };
     }
     if (!(await this.approve(path, baseline, res.content))) {
       return { tool: "edit", attrs: a.attrs, status: "denied", output: "The user declined this change.", meta };
@@ -204,7 +223,8 @@ export class ToolRunner {
     await this.host.writeFile(path, res.content);
     this.markChanged(outcome, path);
     const failText = res.failures.map((f) => `Hunk ${f.hunk} FAILED (others applied): ${f.reason}`).join("\n\n");
-    return { tool: "edit", attrs: a.attrs, status: res.failures.length ? "error" : "ok", output: failText || undefined, meta };
+    const output = [failText, notes].filter(Boolean).join("\n\n");
+    return { tool: "edit", attrs: a.attrs, status: res.failures.length ? "error" : "ok", output: output || undefined, meta };
   }
 
   private async delete(a: Action, turn: number, outcome: RunOutcome): Promise<ActionResult> {

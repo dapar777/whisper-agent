@@ -7,6 +7,7 @@ export const RULES_FILE = ".whisper/rules.md";
 import {
   BuilderOptions,
   buildCorrectionPrompt,
+  classifyProse,
   buildInitialPrompt,
   buildPreamble,
   buildResultsPrompt,
@@ -17,12 +18,42 @@ import {
   summarizeTurn,
 } from "../protocol/PromptBuilder";
 import { parseReply } from "../protocol/ResponseParser";
-import { ParsedReply } from "../protocol/schema";
+import { Action, ParsedReply } from "../protocol/schema";
 import { nowId } from "../protocol/text";
 import { SessionData, Suggestion, TurnRecord } from "../session/SessionData";
 import { collectDiagnosticsSettled } from "../tools/diagnostics";
 import { renderTree } from "../tools/fs";
 import { ChangeListener, PLAN_FILE, RunContext, ToolRunner } from "../tools/ToolRunner";
+
+/**
+ * Ořízne chatové věty kolem dokumentu napsaného do chatu: úvod před prvním nadpisem
+ * („Here is the proposal:“, omluvy) a závěr za posledním obsahem (oddělovač, dotaz, nabídka).
+ */
+export function trimChatter(body: string): { body: string; dropped: string[] } {
+  const dropped: string[] = [];
+  let lines = body.replace(/\r\n/g, "\n").split("\n");
+  const firstHeading = lines.findIndex((l) => /^#{1,6}\s/.test(l));
+  if (firstHeading > 0 && firstHeading <= 15) {
+    const intro = lines.slice(0, firstHeading).join("\n").trim();
+    if (intro) dropped.push(intro);
+    lines = lines.slice(firstHeading);
+  }
+  // závěr: odstavce za koncem, které jsou oddělovač, krátká otázka nebo nabídka „chcete, abych…“
+  const paras = lines.join("\n").split(/\n{2,}/);
+  while (paras.length > 1) {
+    const last = paras[paras.length - 1].trim();
+    const isRule = /^-{3,}$|^\*{3,}$/.test(last);
+    const isQuestion = last.length <= 400 && /\?\s*$/.test(last) && !/^#{1,6}\s/.test(last);
+    const isOffer = last.length <= 400 && /^(chcete|mám|mohu|shall i|would you like|let me know|do you want)/i.test(last);
+    if (isRule || isQuestion || isOffer) {
+      if (!isRule) dropped.push(last);
+      paras.pop();
+      continue;
+    }
+    break;
+  }
+  return { body: paras.join("\n\n").trim(), dropped };
+}
 
 export type StepResult =
   | { kind: "correction"; prompt: string; errors: string[] }
@@ -137,16 +168,83 @@ export class TurnEngine {
     );
   }
 
-  parse(text: string): ParsedReply {
-    return parseReply(text);
+  parse(text: string, expectedTurn?: number): ParsedReply {
+    return parseReply(text, expectedTurn);
+  }
+
+  /**
+   * Odpověď bez použitelného bloku: když je to zjevně dokument a z odpovědi nebo ze zadání je jasná
+   * cílová cesta, agent ho zapíše sám (jako běžný <write>, tedy i se schvalováním změn) a modelu
+   * to oznámí. Vrací akci k vykonání, nebo null, když záchrana nedává smysl.
+   */
+  private async rescueDocument(session: SessionData, parsed: ParsedReply): Promise<{ action: Action; note: string } | null> {
+    const raw = parsed.raw.replace(/\r\n/g, "\n");
+    // cesta: z rozepsaného <write path=…> (i neuzavřeného), jinak ze zadání
+    const fromWrite = raw.match(/<write\b[^>]*\bpath\s*=\s*["']([^"']+)["']/)?.[1];
+    const fromTask = session.task.match(/(?:^|[\s"'`(])((?:[\w.-]+\/)*[\w.-]+\.(?:md|markdown|txt))(?=$|[\s"'`),.;:])/)?.[1];
+    const path = fromWrite ?? fromTask;
+    if (!path) return null;
+    // tělo: text bez protokolových řádků a bez vnějšího ohrazení
+    let body = raw
+      .replace(/<think>[\s\S]*?<\/think>/g, "")
+      .replace(/^\s*<\/?whisper[^>]*>\s*$/gm, "")
+      .replace(/^\s*<write\b[^>]*>\s*$/gm, "")
+      .replace(/^\s*<\/write>\s*$/gm, "")
+      .replace(/^\s*<(status|done)>[\s\S]*?<\/\1>\s*$/gm, "")
+      .trim();
+    const fenced = body.match(/^```[\w-]*[ \t]*\n([\s\S]*?)\n```[ \t]*$/);
+    if (fenced) body = fenced[1].trim();
+    if (classifyProse(body) !== "document") return null;
+    if (await this.host.exists(path)) return null; // existující dokument nepřepisovat naslepo
+    const trimmed = trimChatter(body);
+    return {
+      action: { tool: "write", attrs: { path }, body: trimmed.body + "\n", index: 0 },
+      note:
+        `Your reply had no usable <whisper> block (${parsed.errors[0] ?? "no actions"}). Because the task asks for the document ${path} and your text looked like it, ` +
+        `the agent saved your text as ${path} (see the write result)${trimmed.dropped.length ? `; the chat sentences around it were left out (${trimmed.dropped.map((d) => JSON.stringify(d.slice(0, 60))).join(", ")})` : ""}. ` +
+        `Next time put the document inside <write path="${path}">…</write> in the block. ` +
+        `Continue: check the file (it is your text), fix anything with <edit path="${path}" section="## Heading"> or hunks, ask with <ask> if you need a decision, then <done>.`,
+    };
+  }
+
+  /** Uloží odpověď bez bloku pro pozdější použití a vrátí cestu (nebo undefined, když se nepovede). */
+  private async saveProse(session: SessionData, parsed: ParsedReply): Promise<string | undefined> {
+    const rel = `.whisper/out/reply-${session.turn}-${session.noBlockReplies ?? 1}.md`;
+    try {
+      await this.host.writeFile(rel, parsed.raw);
+      return rel;
+    } catch {
+      return undefined;
+    }
   }
 
   /** Vykoná rozparsovanou odpověď pro aktuální kolo a připraví další krok. */
   async execute(session: SessionData, parsed: ParsedReply, promptChars: number, notes: string[] = [], ctx: RunContext = {}): Promise<StepResult> {
     const turn = session.turn;
+    const agentNotes: string[] = [...parsed.notes];
     if (parsed.actions.length === 0) {
-      return { kind: "correction", prompt: buildCorrectionPrompt(session.id, turn, parsed.errors), errors: parsed.errors };
+      const rescued = await this.rescueDocument(session, parsed);
+      if (!rescued) {
+        session.noBlockReplies = (session.noBlockReplies ?? 0) + 1;
+        const savedTo = await this.saveProse(session, parsed);
+        // dokument ze zadání, který už existuje: opravný prompt má vést k editacím, ne k novému <write>
+        const docPath = session.task.match(/(?:^|[\s"'`(])((?:[\w.-]+\/)*[\w.-]+\.(?:md|markdown|txt))(?=$|[\s"'`),.;:])/)?.[1];
+        const existingDoc = docPath && (await this.host.exists(docPath)) ? docPath : undefined;
+        const prompt = buildCorrectionPrompt(session.id, turn, parsed.errors, {
+          task: session.task,
+          prose: parsed.prose || parsed.raw,
+          attempt: session.noBlockReplies,
+          userNotes: notes,
+          savedTo,
+          existingDoc,
+          preamble: this.statelessPreamble(session),
+        });
+        return { kind: "correction", prompt, errors: parsed.errors };
+      }
+      parsed = { ...parsed, actions: [rescued.action] };
+      agentNotes.push(rescued.note);
     }
+    session.noBlockReplies = 0;
     const startedAt = Date.now();
     const outcome = await this.runner.runAll(parsed.actions, turn, ctx);
     if (ctx.signal?.aborted) {
@@ -202,7 +300,7 @@ export class TurnEngine {
       session.id,
       session.turn,
       outcome.results,
-      { diagnostics, userNotes: notes, parseErrors: parsed.errors },
+      { diagnostics, userNotes: notes, parseErrors: parsed.errors, agentNotes },
       this.optsFor(session),
       session.summaries,
       this.statelessPreamble(session),

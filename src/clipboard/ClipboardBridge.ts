@@ -1,6 +1,7 @@
 import { execFile } from "child_process";
 import * as vscode from "vscode";
-import { looksLikeReply, normalizeClipboard } from "../protocol/replyDetect";
+import { isOwnPrompt, looksLikeReply, normalizeClipboard } from "../protocol/replyDetect";
+import { classifyProse } from "../protocol/PromptBuilder";
 import { cfg, readText, workspaceName, workspaceRoot, writeText } from "../util";
 import { ClipboardOwner } from "./ClipboardOwner";
 import { FileReplyWatcher } from "./FileReplyWatcher";
@@ -42,7 +43,13 @@ export class ClipboardBridge implements vscode.Disposable {
   private readonly owner = new ClipboardOwner();
   readonly onDidPaste = this.owner.onDidPaste;
 
+  /** prompt byl skutečně vložen (jiná aplikace si vyžádala obsah) – od té chvíle může přijít i odpověď bez bloku */
+  private pastedSincePrompt = false;
+
   constructor() {
+    this.owner.onDidPaste(() => {
+      this.pastedSincePrompt = true;
+    });
     // uživatel zkopíroval něco jiného (typicky odpověď): schránku hned přečteme
     this.owner.onDidLose(() => {
       this.otherEmitter.fire();
@@ -66,6 +73,7 @@ export class ClipboardBridge implements vscode.Disposable {
   async copyPrompt(text: string, turn?: number, attachments: string[] = []): Promise<"text" | "file"> {
     text = decoratePrompt(text, turn);
     this.lastPrompt = text;
+    this.pastedSincePrompt = false;
     const threshold = cfg<number>("clipboard.fileAboveChars", 0);
     // textové přílohy (svazky souborů z <bundle>): do historie schránky (Win+V) jako samostatné texty
     // PŘED promptem, takže Ctrl+V vloží prompt a z historie se vezme svazek; obrázky jdou jako soubory
@@ -134,7 +142,7 @@ export class ClipboardBridge implements vscode.Disposable {
     if (!this.waiter) return;
     try {
       const text = await vscode.env.clipboard.readText();
-      if (looksLikeReply(text, this.lastPrompt)) this.waiter.resolve(text);
+      if (looksLikeReply(text, this.lastPrompt) || this.looksLikeProseReply(text)) this.waiter.resolve(text);
     } catch {
       /* ignore */
     }
@@ -218,8 +226,21 @@ export class ClipboardBridge implements vscode.Disposable {
       if (seen === lastSeen) return;
       lastSeen = seen;
       if (looksLikeReply(text, this.lastPrompt)) this.waiter.resolve(text);
+      else if (this.looksLikeProseReply(text)) this.waiter.resolve(text);
       else if (seen !== normalizeClipboard(this.lastPrompt)) this.otherEmitter.fire(); // uživatel zkopíroval něco jiného → prompt už odnesl
     }, poll);
+  }
+
+  /**
+   * Odpověď modelu BEZ bloku (dokument napsaný do chatu, rozepsaný <whisper>): po vložení promptu ji
+   * převezmeme také, jinak by agent čekal donekonečna a uživatel by neviděl, že se nic nestalo.
+   * Bez vlastníka schránky (jiné platformy) se vložení poznat nedá, tam stačí, že to není náš prompt.
+   */
+  private looksLikeProseReply(text: string): boolean {
+    if (!this.pastedSincePrompt && process.platform === "win32") return false;
+    const t = normalizeClipboard(text);
+    if (t.length < 300 || isOwnPrompt(t) || t === normalizeClipboard(this.lastPrompt)) return false;
+    return t.includes("<whisper") || classifyProse(t) === "document";
   }
 
   private stopPolling(): void {

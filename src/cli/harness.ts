@@ -99,7 +99,7 @@ async function main(): Promise<void> {
       const text = await fs.readFile(path.resolve(rootAbs, inbox), "utf8");
       // pro stateless režim potřebuje engine preambuli
       if (s.mode === "stateless") await engine.initialPrompt(s, await engine.gatherContext());
-      const parsed = engine.parse(text);
+      const parsed = engine.parse(text, s.turn);
       if (parsed.turn !== null && parsed.turn !== s.turn) console.log(`! turn mismatch: reply says ${parsed.turn}, expected ${s.turn} (continuing)`);
       if (parsed.errors.length) console.log(`! parse errors: ${parsed.errors.join(" | ")}`);
       console.log(`← reply turn ${s.turn}: ${parsed.actions.length} actions [${parsed.actions.map((a) => a.tool).join(", ")}]`);

@@ -1,6 +1,7 @@
 import * as path from "path";
 import { Host } from "../host/Host";
 import { ActionResult } from "../protocol/schema";
+import { outline } from "../protocol/section";
 
 /** Předrenderovaný strom pro preambuli. */
 export async function renderTree(host: Host, maxEntries: number): Promise<string> {
@@ -35,11 +36,18 @@ export async function toolRead(host: Host, attrs: Record<string, string>): Promi
     from = Math.max(1, Number(m[1]));
     to = Math.min(lines.length, Number(m[2]));
   } else if (lines.length > 400) {
+    // dlouhý soubor: místo holé chyby osnova (nadpisy / deklarace s čísly řádků), ať se model zorientuje
+    const o = outline(text, attrs.path);
+    const isDoc = /\.(md|markdown|txt)$/i.test(attrs.path);
     return {
       tool: "read",
       attrs,
       status: "error",
-      output: `File has ${lines.length} lines; request a range with lines="A-B" (e.g. 1-200).`,
+      output:
+        `File has ${lines.length} lines; request a range with lines="A-B" (several ranges in one turn are fine)` +
+        (isDoc ? ', or replace a whole section with <edit path="…" section="## Heading">' : "") +
+        "." +
+        (o ? `\nOutline (Lnn = line number):\n${o}` : ""),
       meta: { totalLines: lines.length },
     };
   }

@@ -80,6 +80,20 @@ k promptu s čísly řádků, takže model nemusí soubor teprve hledat a může
 zůstává v textu, takže je v průběhu vidět, co jste přiložili. Neexistující cesta se ohlásí u toho
 odkazu a nabídne podobné soubory, zbytek se přiloží normálně.
 
+**Dokumenty a markdown**: agent počítá s tím, že model protokol občas nedodrží, zvlášť když má
+napsat návrh nebo jiný text místo kódu. Parser proto hledá skutečný blok strukturně: ukázky
+`<whisper>`, `</write>` nebo značky hunků uvnitř zapisovaného dokumentu ho nerozbijí, zmínka
+„blok `<whisper>`“ ve shrnutí také ne, celý blok zabalený do ``` ohrazení se rozbalí a HTML
+entity u značek hunků se dekódují. Useknutá akce (chybí uzavírací tag) se nikdy nevykoná, jen se
+ohlásí. Když model napíše dokument rovnou do chatu bez bloku, agent ho převezme ze schránky,
+a pokud ze zadání nebo z rozepsaného `<write path>` zná cílovou cestu a soubor ještě neexistuje,
+zapíše ho sám (jako běžnou změnu ke schválení) a modelu to oznámí; jinak pošle opravný prompt,
+který říká přesně, co udělat (a napodruhé důrazněji). Pro úpravy existujícího dokumentu má
+`<edit path="…" section="## Nadpis">`, které nahradí celou sekci bez SEARCH textu; hunky navíc
+zvládnou setextové podtržení, typografické uvozovky, přeformátované odstavce a omylem
+zkopírovaná čísla řádků, a nejednoznačný SEARCH odmítnou místo tichého zásahu do prvního výskytu.
+Dlouhý soubor bez `lines=` vrátí osnovu (nadpisy nebo deklarace s čísly řádků).
+
 **Přímý dialog** (`whisper.ask.direct`, výchozí zapnuto): model se smí ptát přímo v chatu
 a vy tam odpovíte nebo cokoli dopíšete; v dalším bloku to zapíše akcemi `<dialog>`, takže
 výměna je v průběhu i v transkriptu. Odpověď bez bloku akcí se bere jako otázka v chatu,

@@ -206,6 +206,29 @@ Zkrácený obsah toho, co model dostane v 1. kole:
 
 ---
 
+### 3.6 Robustnost u dokumentů a nespolupracujících modelů
+
+Model, který není stavěný jako kódovací agent (obecný chat), protokol porušuje předvídatelně:
+napíše dokument rovnou do chatu, zabalí blok do ``` ohrazení, zapomene uzavírací tag, HTML-escapuje
+`<` v ukázkách, nebo do dokumentu vloží ukázku samotného protokolu. Agent proto:
+
+- hledá blok **strukturně**: kandidáty `<whisper …>` prochází od začátku, těla akcí přeskakuje (konec
+  těla je první uzavírací tag, za nímž pokračuje struktura protokolu) a kandidáty ležící uvnitř jiného
+  uzavřeného bloku zahazuje; bere ten s akcemi a uzavřením, přednostně s očekávaným číslem kola;
+- useknutou nebo špatně uzavřenou akci nikdy nevykoná (jen ohlásí), zbytek bloku ale zpracuje;
+- ohrazení kolem celé odpovědi i kolem těla `<write>` odstraní, HTML entity u značek hunků dekóduje,
+  typografické uvozovky nechává v tělech beze změny (normalizuje jen atributy);
+- odpověď **bez bloku** ze schránky převezme, jakmile byl prompt vložen; když je to dokument a cílová
+  cesta je známá (ze zadání nebo z rozepsaného `<write path>`) a soubor neexistuje, zapíše ho sám jako
+  běžnou změnu a modelu to oznámí; jinak pošle opravný prompt s kontextem (co se stalo, kam psát, u
+  existujícího dokumentu jak editovat po sekcích), napodruhé důrazněji;
+- markdown edituje po sekcích (`section=`, `insert=before|after`) a hunky snáší setextové podtržení,
+  přeformátované odstavce, sjednocené uvozovky a omylem zkopírovaná čísla řádků; nejednoznačný SEARCH
+  odmítá.
+
+Ověřeno headless testem s Opusem v roli „Copilot v Teams“: dokument v chatu byl zachráněn do souboru,
+ohrazený blok prošel, existující dokument byl po jedné opravě upraven po sekcích.
+
 ## 4. Architektura extensionu
 
 ```

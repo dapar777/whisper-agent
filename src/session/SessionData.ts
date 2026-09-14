@@ -50,6 +50,8 @@ export interface SessionData {
   suggestions?: Suggestion[];
   /** poznámky uživatele napsané během čekání; přiloží se k dalšímu promptu */
   notes?: string[];
+  /** kolik odpovědí bez bloku akcí přišlo za sebou (tolerance dialogu, pak opravné prompty) */
+  noBlockReplies?: number;
 }
 
 export type SuggestionKind = "skill" | "script" | "whisper" | "rule" | "hook" | "allow" | "setting" | "task" | "agent";

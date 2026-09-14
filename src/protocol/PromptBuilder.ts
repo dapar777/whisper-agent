@@ -69,6 +69,8 @@ export interface ResultsExtras {
   userNotes?: string[];
   /** chyby parsování předchozí odpovědi */
   parseErrors?: string[];
+  /** poznámky agenta modelu (co sám opravil nebo udělal za něj) */
+  agentNotes?: string[];
 }
 
 export const DEFAULT_OPTIONS: BuilderOptions = {
@@ -186,6 +188,12 @@ export function buildRules(opts: BuilderOptions): string {
       "turn all files, searches and listings you will plausibly need (typically 5-15 read/grep/ls actions,\n" +
       "or one <bundle> for a whole module or codebase). Never ask for files one at a time.",
     "Prefer <edit> with small, unique SEARCH blocks over <write> for existing files. Use <write> only for new\nfiles or complete rewrites.",
+    "DOCUMENTS ARE FILES: when the deliverable is a document (proposal, spec, README, any .md/.txt), put its\n" +
+      'COMPLETE text inside <write path="docs/name.md"> in the block, never as chat text: text outside the block is\n' +
+      "discarded and the file would not exist. The body is verbatim: no HTML escaping, no outer ``` fence; it may\n" +
+      "freely contain code fences, tables, <whisper> examples, SEARCH markers or </write>. To revise an existing\n" +
+      'document, read it (or take a <bundle>), then replace whole sections with <edit path="…" section="## Heading">\n' +
+      "or change sentences with small SEARCH/REPLACE hunks; retype the whole document only for a full rewrite.",
     "After changing code, verify it in the same turn when possible: add <run> for tests/build and\n" +
       "<diagnostics/> at the end. Fix errors reported back to you. Keep command output small (no verbose\n" +
       "flags); long outputs are truncated. To verify a GUI app visually, start it with <run probe=\"N\" capture=\"M\">\n" +
@@ -419,6 +427,7 @@ export function buildResultsPrompt(
   for (const e of extras.parseErrors ?? []) parts.push(`<protocol-error>${e}</protocol-error>`);
   const tail: string[] = [];
   if (extras.diagnostics?.trim()) tail.push(`<diagnostics>\n${extras.diagnostics.trim()}\n</diagnostics>`);
+  for (const n of extras.agentNotes ?? []) tail.push(`<note>${n.trim()}</note>`);
   for (const n of extras.userNotes ?? []) tail.push(`<user>${n.trim()}</user>`);
   tail.push(`Continue. Reply with <whisper turn="${turn}">.`);
   tail.push("</whisper-results>");
@@ -465,14 +474,88 @@ export function buildResultsPrompt(
   return text;
 }
 
-export function buildCorrectionPrompt(sessionId: string, turn: number, errors: string[]): string {
-  return [
-    `<whisper-results turn="${turn}" session="${sessionId}" correction="true">`,
-    ...errors.map((e) => `<protocol-error>${e}</protocol-error>`),
-    "Your previous reply could not be executed. Send it again, fixed, as a single",
-    `<whisper turn="${turn}"> ... </whisper> block. Remember: bodies are verbatim, every <write>/<edit>/<run> needs its closing tag.`,
-    "</whisper-results>",
-  ].join("\n");
+export interface CorrectionContext {
+  /** zadání úkolu (zkrácené), aby model věděl, kam má dokument zapsat */
+  task?: string;
+  /** odpověď bez bloku: jak vypadala (dokument / otázka / jiné) */
+  prose?: string;
+  /** kolikátý pokus o opravu v řadě (1 = první) */
+  attempt?: number;
+  /** poznámky uživatele napsané během čekání (jinak by se ztratily) */
+  userNotes?: string[];
+  /** cesta, kam agent prose sám uložil pro pozdější použití */
+  savedTo?: string;
+  /** preambule pro stateless režim (chat nemá historii) */
+  preamble?: string;
+  /** dokument z úkolu už existuje: model má editovat, ne posílat celý text znovu */
+  existingDoc?: string;
+}
+
+/** Hrubý odhad, zda text bez bloku je dokument (nadpisy, odrážky), nebo spíš otázka/komentář. */
+export function classifyProse(prose: string): "document" | "question" | "other" {
+  const t = prose.trim();
+  if (!t) return "other";
+  const lines = t.split("\n");
+  const structured = lines.filter((l) => /^\s*(#{1,6}\s|[-*+]\s|\d+[.)]\s|\|)/.test(l)).length;
+  const lastLines = lines.slice(-3).join(" ");
+  if (t.length < 700 && /\?\s*$/.test(lastLines)) return "question";
+  if (structured >= 3 && t.length >= 400) return "document";
+  if (/\?\s*$/.test(lastLines)) return "question";
+  return "other";
+}
+
+export function buildCorrectionPrompt(sessionId: string, turn: number, errors: string[], ctx: CorrectionContext = {}): string {
+  const attempt = ctx.attempt ?? 1;
+  const lines: string[] = [];
+  if (ctx.preamble) lines.push(ctx.preamble, "");
+  lines.push(`<whisper-results turn="${turn}" session="${sessionId}" correction="true">`);
+  for (const e of errors) lines.push(`<protocol-error>${e}</protocol-error>`);
+  const kind = ctx.prose ? classifyProse(ctx.prose) : "other";
+  if (ctx.prose && kind === "document" && ctx.existingDoc) {
+    lines.push(
+      `<note>Your reply contained no <whisper> block with actions, so NOTHING was changed: the agent only executes actions inside the block,`,
+      `and the document ${ctx.existingDoc} already exists, so do not paste sections into the chat. Apply the changes yourself:`,
+      `<whisper turn="${turn}">`,
+      `<read path="${ctx.existingDoc}"/>   (only if you have not seen its current text)`,
+      `<edit path="${ctx.existingDoc}" section="## Existing heading">…complete new text of that section…</edit>`,
+      `<edit path="${ctx.existingDoc}" section="## Neighbour heading" insert="before">## New section\n…its text…</edit>`,
+      `<done>…</done>`,
+      `</whisper>`,
+      `Small wording changes can use SEARCH/REPLACE hunks. Questions go into <ask options="A|B">…</ask> inside the block.` +
+        `${ctx.savedTo ? ` Your chat text was saved for reference to ${ctx.savedTo}.` : ""}</note>`,
+    );
+  } else if (ctx.prose && kind === "document") {
+    lines.push(
+      "<note>Your reply contained no <whisper> block with actions, so NOTHING was executed and no file was created:",
+      "the agent only executes actions inside the block. Your text looks like the document itself. Send it again as",
+      `<whisper turn="${turn}">`,
+      '<write path="docs/NAME.md">',
+      "…the complete document text, verbatim (code fences and examples included)…",
+      "</write>",
+      "<done>…</done>",
+      "</whisper>",
+      `${ctx.savedTo ? `The text you wrote was saved for reference to ${ctx.savedTo}. ` : ""}Use the file path the task asks for.</note>`,
+    );
+  } else if (ctx.prose && kind === "question") {
+    lines.push(
+      "<note>Your reply contained no <whisper> block. If it was a question for the user, ask it inside the block with",
+      '<ask options="A|B">…</ask> (the user then answers here); otherwise continue with actions.</note>',
+    );
+  } else {
+    lines.push(
+      "<note>Your previous reply could not be executed. Send it again, fixed, as a single",
+      `<whisper turn="${turn}"> ... </whisper> block. Bodies are verbatim, every <write>/<edit>/<run> needs its own closing tag.</note>`,
+    );
+  }
+  if (attempt >= 2) {
+    lines.push(
+      `<note>This is correction attempt ${attempt}. Reply with the block ONLY: start your reply with <whisper turn="${turn}"> and end it with </whisper>, no text before or after, no code fence around it.</note>`,
+    );
+  }
+  if (ctx.task) lines.push(`<task>${ctx.task.trim().slice(0, 600)}</task>`);
+  for (const n of ctx.userNotes ?? []) lines.push(`<user>${n.trim()}</user>`);
+  lines.push("</whisper-results>");
+  return lines.join("\n");
 }
 
 export function buildResumePrompt(

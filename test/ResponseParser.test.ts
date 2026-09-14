@@ -58,8 +58,9 @@ export const y = \`tpl \${x}\`;
     const p = parseReply('<whisper turn="1">\n<read path="a"/>\n<fetch url="x"/>\n<write path="b">\nabc');
     expect(p.errors.some((e) => /Missing closing <\/whisper>/.test(e))).toBe(true);
     expect(p.errors.some((e) => /Unknown action <fetch>/.test(e))).toBe(true);
-    expect(p.errors.some((e) => /Missing closing <\/write>/.test(e))).toBe(true);
-    expect(p.actions.map((a) => a.tool)).toEqual(["read", "write"]);
+    expect(p.errors.some((e) => /Missing closing <\/write>.*SKIPPED/.test(e))).toBe(true);
+    // useknuté tělo se nikdy nevykoná (přepsalo by soubor torzem)
+    expect(p.actions.map((a) => a.tool)).toEqual(["read"]);
   });
 
   it("supports a custom end marker for bodies containing the closing tag", () => {
@@ -81,12 +82,19 @@ export const y = \`tpl \${x}\`;
     expect(p.errors).toContain("<run> has an empty body.");
   });
 
-  it("skips an edit whose body contains a stray closing tag of another action", () => {
+  it("keeps a </write> line inside an <edit> body as content (the real </edit> is found by lookahead)", () => {
     const p = parseReply(
       '<whisper turn="4">\n<edit path="README.md">\n<<<<<<< SEARCH\na\n=======\nb\n```\n</write>\n>>>>>>> REPLACE\n</edit>\n<run>npm test</run>\n</whisper>',
     );
-    expect(p.actions.map((a) => a.tool)).toEqual(["run"]);
-    expect(p.errors[0]).toMatch(/SKIPPED.*stray closing tag <\/write>/);
+    expect(p.actions.map((a) => a.tool)).toEqual(["edit", "run"]);
+    expect(p.actions[0].body).toContain("</write>");
+    expect(p.errors).toEqual([]);
+  });
+
+  it("skips an edit that was closed with </write> by mistake and still parses the next action", () => {
+    const p = parseReply('<whisper turn="2">\n<edit path="a.ts">\n<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE\n</write>\n<read path="b.ts"/>\n</whisper>');
+    expect(p.actions.map((a) => a.tool)).toEqual(["read"]);
+    expect(p.errors[0]).toMatch(/closed with <\/write> instead of <\/edit>.*SKIPPED/);
   });
 
   it("ignores <whisper-results> echoed by the model", () => {
