@@ -246,6 +246,8 @@ export interface ParsedReply {
   notes: string[];
   /** prosté vyjádření mimo blok (uložíme do logu) */
   prose: string;
+  /** veškerý text mimo blok (před i za ním); bez bloku celá odpověď */
+  outside: string;
   /** celý původní text odpovědi (pro záchranu dokumentu, když blok chybí nebo je rozbitý) */
   raw: string;
 }

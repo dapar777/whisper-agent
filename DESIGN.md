@@ -222,12 +222,28 @@ napíše dokument rovnou do chatu, zabalí blok do ``` ohrazení, zapomene uzav�
   cesta je známá (ze zadání nebo z rozepsaného `<write path>`) a soubor neexistuje, zapíše ho sám jako
   běžnou změnu a modelu to oznámí; jinak pošle opravný prompt s kontextem (co se stalo, kam psát, u
   existujícího dokumentu jak editovat po sekcích), napodruhé důrazněji;
+- blok **jen s poznámkou** (`<status>`, `<plan>`, `<done>`) vedle dokumentu napsaného do chatu bere
+  stejně: dokument zachrání do souboru (případné `<done>` vynechá, aby model soubor zkontroloval),
+  nebo u existujícího dokumentu pošle opravu po sekcích místo tichého zahození textu;
+- **dutý `<write>`** („text zkopíruj z nadpisu výše“) vedle dokumentu v chatu naplní dokumentem z chatu;
+  značky protokolu **HTML-escapované** jako `&lt;whisper&gt;` dekóduje a zkusí parsovat znovu (model se
+  to dozví v `<note>`); ohrazení kolem bloku uprostřed odpovědi ignoruje;
+- prompt **nepřipisuje modelu žádnou schopnost**: nástroj je popsaný jako program, do kterého uživatel
+  odpověď kopíruje (obecný chat pak nemá co odmítat: „nemám takovou integraci“), text mimo blok je
+  výslovně „zahozen, neuložen“, a každý prompt končí připomínkou formátu, u dokumentu ze zadání
+  s konkrétní kostrou `<write path="…">…</write><done>`;
 - markdown edituje po sekcích (`section=`, `insert=before|after`) a hunky snáší setextové podtržení,
   přeformátované odstavce, sjednocené uvozovky a omylem zkopírovaná čísla řádků; nejednoznačný SEARCH
   odmítá.
 
-Ověřeno headless testem s Opusem v roli „Copilot v Teams“: dokument v chatu byl zachráněn do souboru,
-ohrazený blok prošel, existující dokument byl po jedné opravě upraven po sekcích.
+Ověřeno headless testy s Opusem v rolích nespolupracujících modelů (přísný „Copilot v Teams“, který
+odmítá roli agenta; Copilot, který píše dokumenty do chatu; obecný chat, který vše balí do ohrazení
+a escapuje `<`). Původní znění preambule („tento chat je napojený na VS Code, ty sám soubory otevřít
+nemůžeš“) přísný model četl jako nepravdivé tvrzení o svých schopnostech a blok vůbec nevracel; po
+přeformulování (nástroj = program, do kterého uživatel odpověď kopíruje; připomínka na konci v jazyce
+zadání s konkrétní kostrou odpovědi) vrátil blok s celým dokumentem ve `<write>` hned v první odpovědi.
+Zbylé tvary (dokument v chatu + dutý blok, escapované značky) zachytí záchranné sítě výše, takže úloha
+skončila v jednom kole i u nich.
 
 ## 4. Architektura extensionu
 

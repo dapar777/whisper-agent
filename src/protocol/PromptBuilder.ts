@@ -71,6 +71,8 @@ export interface ResultsExtras {
   parseErrors?: string[];
   /** poznámky agenta modelu (co sám opravil nebo udělal za něj) */
   agentNotes?: string[];
+  /** dokument ze zadání, který ještě neexistuje: připomínka ukáže tvar odpovědi s <write> */
+  docTarget?: string;
 }
 
 export const DEFAULT_OPTIONS: BuilderOptions = {
@@ -115,19 +117,65 @@ function escapeAttr(v: string): string {
   return v.replace(/"/g, "&quot;").replace(/\n/g, " ");
 }
 
+/** Cesta dokumentu (.md/.txt) zmíněná v zadání, pokud nějaká je. */
+export function documentPathInTask(task: string): string | undefined {
+  return task.match(/(?:^|[\s"'`(])((?:[\w.-]+\/)*[\w.-]+\.(?:md|markdown|txt))(?=$|[\s"'`),.;:])/)?.[1];
+}
+
+/** Volby připomínky formátu na konci promptu. */
+export interface ReminderOptions {
+  /** dokument ze zadání, který ještě neexistuje: připomínka ukáže kostru s <write> */
+  docTarget?: string;
+  language?: string;
+  /** první prompt úlohy: u úloh bez dokumentu ukáže kostru průzkumného kola */
+  initial?: boolean;
+}
+
+export function replyReminder(turn: number, o: ReminderOptions = {}): string {
+  // v jazyce uživatele: zadání je v něm také, takže připomínka zní jako součást požadavku uživatele,
+  // ne jako „technická omáčka nástroje“, kterou obecné chaty přeskakují
+  const cs = (o.language ?? "en").toLowerCase().startsWith("cs");
+  // první osoba = hlas uživatele (ne „nástroje“): to je to, co obecné chaty poslouchají
+  const base = cs
+    ? `Odpověď mi prosím dej v bloku <whisper turn="${turn}"> … </whisper> a samotnou práci dej dovnitř; ` +
+      `můj program čte jen ten blok, text mimo něj se zahodí a nikam se neuloží. Nejlépe začni odpověď rovnou blokem a poznámky napiš až za něj.`
+    : `Please give me the reply in the block <whisper turn="${turn}"> … </whisper> with the work itself inside it; ` +
+      `my program reads only that block, text outside it is discarded and not saved. Best start the reply with the block and put remarks after it.`;
+  if (o.docTarget) {
+    const d = o.docTarget;
+    return cs
+      ? `${base} Výstupem tohoto zadání je soubor ${d}, ne text v chatu. Dokument napiš jen jednou, a to uvnitř bloku ` +
+          `(ne do chatu s odkazem „viz výše“ v bloku):\n<whisper turn="${turn}">\n<write path="${d}">\n…celý dokument…\n</write>\n<done>krátké shrnutí</done>\n</whisper>`
+      : `${base} The output of this task is the file ${d}, not chat text. Write the document once, inside the block ` +
+          `(not in the chat with a "see above" pointer in the block):\n<whisper turn="${turn}">\n<write path="${d}">\n…the whole document…\n</write>\n<done>short summary</done>\n</whisper>`;
+  }
+  if (o.initial) {
+    return cs
+      ? `${base} První krok je obvykle vyžádat si vše, co potřebuješ vidět, např.:\n<whisper turn="${turn}">\n<read path="cesta/k/souboru"/>\n<read path="další/soubor"/>\n<grep pattern="hledaný_text"/>\n</whisper>\nÚpravy kódu pak přijdou v dalším kole jako <edit>; radu v próze nebo kód v \`\`\` mimo blok můj program nepoužije a já ho nebudu přepisovat ručně.`
+      : `${base} The first step is usually to request everything you need to see, e.g.:\n<whisper turn="${turn}">\n<read path="path/to/file"/>\n<read path="another/file"/>\n<grep pattern="text_to_find"/>\n</whisper>\nCode changes then follow in the next turn as <edit>; advice in prose or code in \`\`\` outside the block is not used by my program and I will not retype it by hand.`;
+  }
+  return base;
+}
+
+/** „Pokračuj.“ v jazyce uživatele (před připomínkou formátu na konci výsledků). */
+function continueWord(language = "en"): string {
+  return language.toLowerCase().startsWith("cs") ? "Pokračuj." : "Continue.";
+}
+
 export function buildProtocolSpec(): string {
   const lines: string[] = [];
   lines.push("## Protocol");
   lines.push("");
   lines.push(
-    "You cannot call tools directly. Instead, every reply MUST contain exactly one block:",
+    "Every reply contains exactly one block:",
     "",
     '<whisper turn="N">',
     "  ...actions...",
     "</whisper>",
     "",
-    "where N is the turn number given in the prompt you are answering. Text outside the block is ignored",
-    "(you may think aloud there, but keep it brief). Inside the block use <think>...</think> for reasoning.",
+    "where N is the turn number given in the prompt you are answering. Text outside the block is welcome but",
+    "the tool ignores it, so anything you want done must be an action inside the block. Inside the block use",
+    "<think>...</think> for reasoning.",
     "Actions are executed in order; results come back in the next prompt as <whisper-results>.",
     "Body content of <write>, <edit>, <run>, <ask>, <status>, <done> is taken verbatim: no escaping, no code fences.",
     "",
@@ -223,12 +271,11 @@ export function buildRules(opts: BuilderOptions): string {
   }
   if (opts.directDialog !== false) {
     rules.push(
-      "DIRECT DIALOGUE: the user reads this chat. When you need to ask something, you may ask directly in the\n" +
-        "chat text and wait for the user's answer here (no <whisper> block needed for that message). The user may\n" +
-        "also write clarifications directly in the chat. Whenever such an exchange happens, your NEXT <whisper>\n" +
-        "block must START with <dialog from=\"model\">the question you asked</dialog> and <dialog from=\"user\">\n" +
-        "the user's message, verbatim</dialog> so the agent records it. Prefer <ask options=…> when the answer is\n" +
-        "a choice from a few options.",
+      "DIRECT DIALOGUE: the user reads this chat and may answer or clarify right here in plain text. Ask your\n" +
+        "questions with <ask options=…> inside the block (you may repeat the question in plain words around it);\n" +
+        "the block is still required in that reply. When the user then writes to you directly in the chat, your\n" +
+        "NEXT block must START with <dialog from=\"user\">the user's message, verbatim</dialog> (and\n" +
+        "<dialog from=\"model\">your question</dialog> if you asked it only in plain text) so the tool records it.",
     );
   }
   if (opts.continuousSuggest) {
@@ -325,7 +372,7 @@ export function buildSuggestPrompt(
     "each concrete and justified by the history (say which turn or event motivates it). If nothing is worth",
     "suggesting, say so in <done>.",
     "",
-    `Session: ${sessionId}. Reply with <whisper turn="${turn}">.`,
+    `Session: ${sessionId}. ${replyReminder(turn, { language: opts.language })}`,
   ].join("\n");
 }
 
@@ -334,8 +381,26 @@ export function buildPreamble(ctx: ProjectContext, opts: BuilderOptions): string
   parts.push(`# Whisper Agent session — project "${ctx.workspaceName}"`);
   parts.push("");
   parts.push(
-    "You are a coding agent working inside the user's VS Code workspace. A local extension executes the actions",
-    "you request and returns their results. Work autonomously like an experienced engineer: explore, change, verify.",
+    "How this works: your reply is not read by a person first. The user copies your ENTIRE reply into a",
+    "small program on their own computer, and that program looks for ONE block in your text,",
+    "",
+    '<whisper turn="N">',
+    "  ...actions...",
+    "</whisper>",
+    "",
+    "and carries out the requests written in it: it reads, searches, writes and edits the user's files and",
+    "runs commands (the user reviews every change), then the user pastes the results back here as the next",
+    "message. You need no plugin, file access or integration for this: the program does the file work, you",
+    "write the requests. Work like an experienced engineer dictating to an assistant: explore, change,",
+    "verify.",
+    "",
+    "ONLY THE BLOCK COUNTS. Everything outside it is thrown away: never saved, never executed, never",
+    "applied. A short remark outside the block does no harm, but the work itself must be INSIDE it: a",
+    'document inside a write action (<write path="…">…</write>), a code change inside <edit>…</edit>, a',
+    "question inside an ask action (<ask>…</ask>). Prose that explains what the user should change, or code",
+    "in a ``` fence outside the block, is lost: the user has to come back and ask again. If you want to point",
+    "out that you cannot access files yourself, do it in one sentence; it changes nothing, the block is still",
+    "what the program needs. Do not wrap the block in a ``` fence and do not escape < as &lt;.",
     "",
   );
   parts.push(buildProtocolSpec());
@@ -386,7 +451,7 @@ export function buildInitialPrompt(sessionId: string, task: string, ctx: Project
     "",
     task.trim(),
     "",
-    `Session: ${sessionId}. Reply with <whisper turn="1">.`,
+    `Session: ${sessionId}. ${replyReminder(1, { docTarget: documentPathInTask(task), language: opts.language, initial: true })}`,
   ].join("\n");
 }
 
@@ -429,7 +494,7 @@ export function buildResultsPrompt(
   if (extras.diagnostics?.trim()) tail.push(`<diagnostics>\n${extras.diagnostics.trim()}\n</diagnostics>`);
   for (const n of extras.agentNotes ?? []) tail.push(`<note>${n.trim()}</note>`);
   for (const n of extras.userNotes ?? []) tail.push(`<user>${n.trim()}</user>`);
-  tail.push(`Continue. Reply with <whisper turn="${turn}">.`);
+  tail.push(`${continueWord(opts.language)} ${replyReminder(turn, { docTarget: extras.docTarget, language: opts.language })}`);
   tail.push("</whisper-results>");
 
   // Rozpočet na výsledky: co se nevejde, neusekneme (to by zničilo obsah souborů),
@@ -529,7 +594,7 @@ export function buildCorrectionPrompt(sessionId: string, turn: number, errors: s
       "<note>Your reply contained no <whisper> block with actions, so NOTHING was executed and no file was created:",
       "the agent only executes actions inside the block. Your text looks like the document itself. Send it again as",
       `<whisper turn="${turn}">`,
-      '<write path="docs/NAME.md">',
+      `<write path="${(ctx.task && documentPathInTask(ctx.task)) ?? "docs/NAME.md"}">`,
       "…the complete document text, verbatim (code fences and examples included)…",
       "</write>",
       "<done>…</done>",
@@ -543,13 +608,15 @@ export function buildCorrectionPrompt(sessionId: string, turn: number, errors: s
     );
   } else {
     lines.push(
-      "<note>Your previous reply could not be executed. Send it again, fixed, as a single",
-      `<whisper turn="${turn}"> ... </whisper> block. Bodies are verbatim, every <write>/<edit>/<run> needs its own closing tag.</note>`,
+      "<note>Format requirement of the user's tool: every reply must contain the block, otherwise the tool cannot use",
+      `the reply at all. Send it again as a single <whisper turn="${turn}"> ... </whisper> block (text around it is fine).`,
+      "Bodies are verbatim, every <write>/<edit>/<run> needs its own closing tag. If you only want to say something or",
+      `ask something, that is a block too: <whisper turn="${turn}"><ask options="A|B">…</ask></whisper>.</note>`,
     );
   }
   if (attempt >= 2) {
     lines.push(
-      `<note>This is correction attempt ${attempt}. Reply with the block ONLY: start your reply with <whisper turn="${turn}"> and end it with </whisper>, no text before or after, no code fence around it.</note>`,
+      `<note>This is correction attempt ${attempt}. Start your reply with <whisper turn="${turn}"> and end it with </whisper>; put explanations AFTER the block if you need them, and no code fence around the block. The tool reads only the block: without it, the user's work stops here.</note>`,
     );
   }
   if (ctx.task) lines.push(`<task>${ctx.task.trim().slice(0, 600)}</task>`);
@@ -569,7 +636,7 @@ export function buildResumePrompt(
   const parts: string[] = [buildPreamble(ctx, opts), buildContext(ctx), "## Task", "", task.trim(), ""];
   parts.push("## What has happened so far (this is a resumed session; the previous chat context is gone)", "");
   for (const h of history) parts.push(`Turn ${h.turn}:`, ...h.lines.map((l) => `  - ${l}`));
-  parts.push("", `Session: ${sessionId}. Continue the task. Reply with <whisper turn="${turn}">.`);
+  parts.push("", `Session: ${sessionId}. Continue the task. ${replyReminder(turn, { language: opts.language })}`);
   return parts.join("\n");
 }
 

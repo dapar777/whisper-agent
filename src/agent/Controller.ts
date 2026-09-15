@@ -189,8 +189,9 @@ export class Controller implements vscode.Disposable {
       await this.answerQuestion(parsed.text);
       return;
     }
-    // vložený text, který je zjevně odpověď modelu bez bloku (rozepsaný <whisper>, dlouhý dokument), není poznámka
-    if (s && s.state === "waitingForReply" && parsed.commands.length === 0 && (raw.includes("<whisper") || (raw.length > 1500 && classifyProse(raw) === "document"))) {
+    // vložený text, který je zjevně odpověď modelu (blok, rozepsaný <whisper>, dlouhý dokument), není poznámka ani odpověď na otázku
+    const looksLikeModelReply = raw.includes("<whisper") || (raw.length > 1500 && classifyProse(raw) === "document");
+    if (s && (s.state === "waitingForReply" || s.state === "awaitingUser") && parsed.commands.length === 0 && looksLikeModelReply) {
       this.submitReply(raw);
       return;
     }
@@ -443,7 +444,7 @@ export class Controller implements vscode.Disposable {
     if (!s || s.state !== "awaitingUser" || !this.engine) return;
     this.pushItem({ kind: "answer", text: answer });
     await this.transcript?.append({ session: s.id, kind: "answer", text: answer });
-    const prompt = this.engine.answerPrompt(s, answer + (await this.refsBlock(answer)), this.drainNotes());
+    const prompt = await this.engine.answerPrompt(s, answer + (await this.refsBlock(answer)), this.drainNotes());
     this.session.update({ pendingQuestion: undefined, pendingOptions: undefined, pendingMulti: undefined });
     void this.loop(prompt);
   }
@@ -527,12 +528,15 @@ export class Controller implements vscode.Disposable {
     // copy = nový prompt do schránky a do panelu; recopy = obnova (stejný prompt znovu do schránky, bez položky);
     // none = čekat dál a schránku nechat být (uživatel právě odpovídá modelu v chatu)
     let copyMode: "copy" | "recopy" | "none" = skipCopy ? "recopy" : "copy";
+    // model položil <ask>: čekáme na odpověď v panelu, ale zároveň hlídáme schránku, protože uživatel
+    // může odpovědět rovnou v chatu a zkopírovat další blok modelu (s <dialog from="user">)
+    let awaitingChat = false;
     try {
       while (!token.isCancellationRequested) {
         const s = this.session.current;
         if (!s) return;
         if (copyMode !== "copy") attachments = s.pendingAttachments ?? [];
-        this.session.update({ state: "waitingForReply", pendingPrompt: prompt, pendingAttachments: attachments });
+        if (!awaitingChat) this.session.update({ state: "waitingForReply", pendingPrompt: prompt, pendingAttachments: attachments });
         if (copyMode === "recopy") {
           this.clipboard.copyPrompt(prompt, s.turn, attachments).catch(() => undefined);
         } else if (copyMode === "copy") {
@@ -556,6 +560,12 @@ export class Controller implements vscode.Disposable {
           this.logLine("⚠ Ve schránce je náš prompt, ne odpověď modelu; čekám dál.");
           copyMode = "none";
           continue;
+        }
+        if (awaitingChat) {
+          // uživatel odpověděl modelu přímo v chatu a zkopíroval jeho další blok
+          awaitingChat = false;
+          this.pushItem({ kind: "answer", text: "(odpovězeno přímo v chatu)" });
+          this.session.update({ pendingQuestion: undefined, pendingOptions: undefined, pendingMulti: undefined });
         }
         const parsed = engine.parse(replyText, s.turn);
         if (parsed.turn !== null && parsed.turn !== s.turn) {
@@ -648,7 +658,10 @@ export class Controller implements vscode.Disposable {
             this.pushItem({ kind: "ask", text: step.question, data: { options: step.options, multi: step.multi } });
             await this.transcript?.append({ session: s.id, kind: "ask", text: step.question });
             vscode.window.setStatusBarMessage(`$(question) Whisper se ptá: ${step.question.split("\n")[0].slice(0, 80)}`, 10000);
-            return;
+            // dál hlídat schránku: odpověď v panelu tuhle smyčku zruší (answerQuestion), odpověď v chatu přijde jako další blok
+            awaitingChat = true;
+            copyMode = "none";
+            continue;
           case "next":
             prompt = step.prompt;
             attachments = step.attachments;

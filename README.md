@@ -87,8 +87,14 @@ napsat návrh nebo jiný text místo kódu. Parser proto hledá skutečný blok 
 entity u značek hunků se dekódují. Useknutá akce (chybí uzavírací tag) se nikdy nevykoná, jen se
 ohlásí. Když model napíše dokument rovnou do chatu bez bloku, agent ho převezme ze schránky,
 a pokud ze zadání nebo z rozepsaného `<write path>` zná cílovou cestu a soubor ještě neexistuje,
-zapíše ho sám (jako běžnou změnu ke schválení) a modelu to oznámí; jinak pošle opravný prompt,
-který říká přesně, co udělat (a napodruhé důrazněji). Pro úpravy existujícího dokumentu má
+zapíše ho sám (jako běžnou změnu ke schválení) a modelu to oznámí; totéž udělá, když blok
+obsahuje jen poznámku (`<status>`, `<done>`) a dokument leží v chatu vedle něj, nebo když `<write>`
+místo dokumentu obsahuje jen „text zkopíruj z nadpisu výše“. Značky HTML-escapované jako
+`&lt;whisper&gt;` dekóduje. Jinak pošle opravný
+prompt, který říká přesně, co udělat (a napodruhé důrazněji). Prompt sám je psaný tak, aby model
+neměl co odmítat: nástroj popisuje jako program, do kterého uživatel odpověď kopíruje (model
+nepotřebuje žádnou integraci ani přístup k souborům, jen píše text), a každý prompt končí
+připomínkou formátu, u dokumentu i s konkrétní kostrou `<write path="…">`. Pro úpravy existujícího dokumentu má
 `<edit path="…" section="## Nadpis">`, které nahradí celou sekci bez SEARCH textu; hunky navíc
 zvládnou setextové podtržení, typografické uvozovky, přeformátované odstavce a omylem
 zkopírovaná čísla řádků, a nejednoznačný SEARCH odmítnou místo tichého zásahu do prvního výskytu.

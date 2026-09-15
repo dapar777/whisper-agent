@@ -179,12 +179,25 @@ function pickBlock(src: string, expectedTurn?: number): Candidate | null {
  * blok, když jich odpověď obsahuje víc.
  */
 export function parseReply(text: string, expectedTurn?: number): ParsedReply {
-  const result: ParsedReply = { turn: null, session: null, actions: [], errors: [], notes: [], prose: "", raw: text };
+  const first = parseOnce(text, expectedTurn);
+  if (first.actions.length > 0 || !/&lt;whisper\b/.test(text)) return first;
+  // model HTML-escapoval značky protokolu (&lt;whisper …&gt;): dekódujeme celou odpověď a zkusíme to znovu
+  const decoded = text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+  const second = parseOnce(decoded, expectedTurn);
+  if (second.actions.length === 0) return first;
+  second.raw = text;
+  second.notes.unshift("The protocol tags in your reply were HTML-escaped (&lt;whisper&gt;, &lt;write&gt;…); the tool decoded the whole reply, so any &lt; or &amp; meant literally in the document became < or &. Send the tags unescaped.");
+  return second;
+}
+
+function parseOnce(text: string, expectedTurn?: number): ParsedReply {
+  const result: ParsedReply = { turn: null, session: null, actions: [], errors: [], notes: [], prose: "", outside: "", raw: text };
   const cleaned = stripFences(text.replace(/\r\n/g, "\n"));
   const block = pickBlock(cleaned, expectedTurn);
   if (!block) {
     result.errors.push('No <whisper turn="N"> ... </whisper> block found in the reply.');
     result.prose = text.trim();
+    result.outside = result.prose;
     return result;
   }
   if (block.scan.close < 0) {
@@ -193,7 +206,10 @@ export function parseReply(text: string, expectedTurn?: number): ParsedReply {
   const turn = Number(block.attrs.turn);
   result.turn = block.attrs.turn && !Number.isNaN(turn) ? turn : null;
   result.session = block.attrs.session ?? null;
-  result.prose = block.tagStart > 0 ? cleaned.slice(0, block.tagStart).trim() : "";
+  // blok zabalený do ``` ohrazení uprostřed odpovědi: úvodní a závěrečný řádek ohrazení nepatří ani do prose
+  result.prose = block.tagStart > 0 ? cleaned.slice(0, block.tagStart).trim().replace(/\n?```[\w-]*[ \t]*$/, "").trim() : "";
+  const after = block.scan.close >= 0 ? cleaned.slice(block.scan.close + CLOSE_TAG.length).trim().replace(/^```[ \t]*\n?/, "").trim() : "";
+  result.outside = [result.prose, after].filter(Boolean).join("\n\n");
   result.actions = block.scan.actions;
   result.errors.push(...block.scan.errors);
   result.notes.push(...block.scan.notes);

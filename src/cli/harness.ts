@@ -146,7 +146,7 @@ async function main(): Promise<void> {
     case "answer": {
       const s = await load();
       if (s.mode === "stateless") await engine.initialPrompt(s, await engine.gatherContext());
-      const prompt = engine.answerPrompt(s, rest.join(" "), []);
+      const prompt = await engine.answerPrompt(s, rest.join(" "), []);
       await transcript.append({ session: s.id, kind: "answer", text: rest.join(" ") });
       s.pendingQuestion = undefined;
       await emit(s, prompt);

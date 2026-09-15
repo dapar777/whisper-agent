@@ -8,6 +8,7 @@ import {
   BuilderOptions,
   buildCorrectionPrompt,
   classifyProse,
+  documentPathInTask,
   buildInitialPrompt,
   buildPreamble,
   buildResultsPrompt,
@@ -18,6 +19,9 @@ import {
   summarizeTurn,
 } from "../protocol/PromptBuilder";
 import { parseReply } from "../protocol/ResponseParser";
+
+/** Akce, které samy nic nemění: blok složený jen z nich je „jen poznámka“. */
+const REMARK_TOOLS = new Set(["status", "dialog", "plan", "done", "think"]);
 import { Action, ParsedReply } from "../protocol/schema";
 import { nowId } from "../protocol/text";
 import { SessionData, Suggestion, TurnRecord } from "../session/SessionData";
@@ -42,10 +46,12 @@ export function trimChatter(body: string): { body: string; dropped: string[] } {
   const paras = lines.join("\n").split(/\n{2,}/);
   while (paras.length > 1) {
     const last = paras[paras.length - 1].trim();
-    const isRule = /^-{3,}$|^\*{3,}$/.test(last);
+    const isRule = /^-{3,}$|^\*{3,}$|^```[\w-]*$/.test(last);
     const isQuestion = last.length <= 400 && /\?\s*$/.test(last) && !/^#{1,6}\s/.test(last);
     const isOffer = last.length <= 400 && /^(chcete|mám|mohu|shall i|would you like|let me know|do you want)/i.test(last);
-    if (isRule || isQuestion || isOffer) {
+    // krátký uvozovací odstavec „A pro ten tvůj nástroj:“ před blokem, který následoval
+    const isLeadIn = last.length <= 200 && /:\s*$/.test(last) && !/^#{1,6}\s/.test(last) && !/^[-*]\s|^\d+\.\s/.test(last);
+    if (isRule || isQuestion || isOffer || isLeadIn) {
       if (!isRule) dropped.push(last);
       paras.pop();
       continue;
@@ -154,14 +160,15 @@ export class TurnEngine {
    * Prompt s odpovědí uživatele na <ask>. Přiloží i výsledky akcí, které model
    * poslal ve stejném bloku jako otázku (ty ještě neviděl).
    */
-  answerPrompt(session: SessionData, answer: string, notes: string[]): string {
+  async answerPrompt(session: SessionData, answer: string, notes: string[]): Promise<string> {
     const last = session.history[session.history.length - 1];
     const pending = last && last.actions.some((a) => a.tool === "ask") ? last.results : [];
+    if (last) last.undelivered = false;
     return buildResultsPrompt(
       session.id,
       session.turn,
       pending,
-      { userNotes: [`Answer to your question: ${answer}`, ...notes], parseErrors: last?.errors },
+      { userNotes: [`Answer to your question: ${answer}`, ...notes], parseErrors: last?.errors, docTarget: await this.docTarget(session) },
       this.optsFor(session),
       session.summaries,
       this.statelessPreamble(session),
@@ -172,20 +179,17 @@ export class TurnEngine {
     return parseReply(text, expectedTurn);
   }
 
-  /**
-   * Odpověď bez použitelného bloku: když je to zjevně dokument a z odpovědi nebo ze zadání je jasná
-   * cílová cesta, agent ho zapíše sám (jako běžný <write>, tedy i se schvalováním změn) a modelu
-   * to oznámí. Vrací akci k vykonání, nebo null, když záchrana nedává smysl.
-   */
-  private async rescueDocument(session: SessionData, parsed: ParsedReply): Promise<{ action: Action; note: string } | null> {
-    const raw = parsed.raw.replace(/\r\n/g, "\n");
-    // cesta: z rozepsaného <write path=…> (i neuzavřeného), jinak ze zadání
-    const fromWrite = raw.match(/<write\b[^>]*\bpath\s*=\s*["']([^"']+)["']/)?.[1];
-    const fromTask = session.task.match(/(?:^|[\s"'`(])((?:[\w.-]+\/)*[\w.-]+\.(?:md|markdown|txt))(?=$|[\s"'`),.;:])/)?.[1];
-    const path = fromWrite ?? fromTask;
-    if (!path) return null;
-    // tělo: text bez protokolových řádků a bez vnějšího ohrazení
-    let body = raw
+  /** Dokument ze zadání, který ještě neexistuje: připomínka formátu pak ukáže tvar odpovědi s <write>. */
+  private async docTarget(session: SessionData): Promise<string | undefined> {
+    const p = documentPathInTask(session.task);
+    if (!p) return undefined;
+    return (await this.host.exists(p)) ? undefined : p;
+  }
+
+  /** Text odpovědi bez protokolových řádků a vnějšího ohrazení; null, když to nevypadá jako dokument. */
+  private static documentBody(text: string): string | null {
+    let body = text
+      .replace(/\r\n/g, "\n")
       .replace(/<think>[\s\S]*?<\/think>/g, "")
       .replace(/^\s*<\/?whisper[^>]*>\s*$/gm, "")
       .replace(/^\s*<write\b[^>]*>\s*$/gm, "")
@@ -194,16 +198,100 @@ export class TurnEngine {
       .trim();
     const fenced = body.match(/^```[\w-]*[ \t]*\n([\s\S]*?)\n```[ \t]*$/);
     if (fenced) body = fenced[1].trim();
-    if (classifyProse(body) !== "document") return null;
+    // osamělé ohrazení (blok byl ve fence a ta zůstala mimo něj): lichý počet fence řádků, krajní pryč
+    if ((body.match(/^```/gm) ?? []).length % 2 === 1) {
+      if (/\n```[ \t]*$/.test(body)) body = body.replace(/\n```[ \t]*$/, "").trim();
+      else if (/^```[\w-]*[ \t]*\n/.test(body)) body = body.replace(/^```[\w-]*[ \t]*\n/, "").trim();
+    }
+    return classifyProse(body) === "document" ? body : null;
+  }
+
+  /**
+   * „Dutý“ <write>: dokument je v chatu mimo blok a tělo write jen odkazuje („text zkopíruj z nadpisu
+   * výše“). Tělo nahradíme dokumentem z chatu. Jen pro .md/.txt, jen když je tělo krátké a dokument
+   * mimo blok zjevný.
+   */
+  private static rescueHollowWrite(parsed: ParsedReply): { action: Action; replacement: Action; note: string } | null {
+    const write = parsed.actions.find((a) => a.tool === "write" && /\.(md|markdown|txt)$/i.test(String(a.attrs.path ?? "")));
+    if (!write) return null;
+    const body = (write.body ?? "").trim();
+    if (body.length >= 400 || classifyProse(body) === "document") return null;
+    const doc = TurnEngine.documentBody(parsed.outside);
+    if (!doc) return null;
+    const trimmed = trimChatter(doc);
+    const path = String(write.attrs.path);
+    return {
+      action: write,
+      replacement: { ...write, body: trimmed.body + "\n" },
+      note:
+        `Format requirement: the document itself must be INSIDE <write path="${path}">…</write>; your <write> body had only ` +
+        `${body.split("\n").length} short line(s) (${JSON.stringify(body.slice(0, 60))}) while the document was written as chat text ` +
+        `outside the block, which the tool discards. This once the tool used your chat text as the file content (see the write result). ` +
+        `From now on write the document once, inside <write>.`,
+    };
+  }
+
+  /** Blok, který nic nedělá (jen poznámka, plán nebo done): skutečná práce mohla zůstat v chatu mimo blok. */
+  private static remarksOnly(actions: Action[]): boolean {
+    return actions.length > 0 && actions.every((a) => REMARK_TOOLS.has(a.tool));
+  }
+
+  /**
+   * Odpověď bez použitelného bloku (source="raw"), nebo blok jen s poznámkou a dokument v chatu mimo něj
+   * (source="outside"): když je to zjevně dokument a z odpovědi nebo ze zadání je jasná cílová cesta, agent
+   * ho zapíše sám (jako běžný <write>, tedy i se schvalováním změn) a modelu to oznámí. Vrací akci
+   * k vykonání, nebo null, když záchrana nedává smysl.
+   */
+  private async rescueDocument(session: SessionData, parsed: ParsedReply, source: "raw" | "outside"): Promise<{ action: Action; note: string } | null> {
+    const text = source === "raw" ? parsed.raw : parsed.outside;
+    // cesta: z rozepsaného <write path=…> (i neuzavřeného), jinak ze zadání
+    const fromWrite = text.match(/<write\b[^>]*\bpath\s*=\s*["']([^"']+)["']/)?.[1];
+    const path = fromWrite ?? documentPathInTask(session.task);
+    if (!path) return null;
+    const body = TurnEngine.documentBody(text);
+    if (!body) return null;
     if (await this.host.exists(path)) return null; // existující dokument nepřepisovat naslepo
     const trimmed = trimChatter(body);
+    const why =
+      source === "raw"
+        ? `Format requirement: every reply must contain the <whisper> block with the work inside it; yours had no usable block (${parsed.errors[0] ?? "no actions"}). `
+        : `Format requirement: the work itself must be INSIDE the <whisper> block; your block held only ${parsed.actions.map((a) => `<${a.tool}>`).join(", ")} while the document was written as chat text outside it, which the tool discards. `;
     return {
       action: { tool: "write", attrs: { path }, body: trimmed.body + "\n", index: 0 },
       note:
-        `Your reply had no usable <whisper> block (${parsed.errors[0] ?? "no actions"}). Because the task asks for the document ${path} and your text looked like it, ` +
-        `the agent saved your text as ${path} (see the write result)${trimmed.dropped.length ? `; the chat sentences around it were left out (${trimmed.dropped.map((d) => JSON.stringify(d.slice(0, 60))).join(", ")})` : ""}. ` +
-        `Next time put the document inside <write path="${path}">…</write> in the block. ` +
+        why +
+        `This once the tool recovered: the task asks for ${path}, your text looked like that document, so it was saved as ${path} (see the write result)` +
+        `${trimmed.dropped.length ? `; the chat sentences around it were left out (${trimmed.dropped.map((d) => JSON.stringify(d.slice(0, 60))).join(", ")})` : ""}. ` +
+        `The tool cannot do this in general, so from now on put the document inside <write path="${path}">…</write> in the block. ` +
         `Continue: check the file (it is your text), fix anything with <edit path="${path}" section="## Heading"> or hunks, ask with <ask> if you need a decision, then <done>.`,
+    };
+  }
+
+  /**
+   * Odpověď bez bloku (nebo jen s poznámkou), která není dokument, ale zmiňuje existující soubory
+   * („pošlete mi obsah todo/model.py“, „v ts-app/src/model.ts změňte…“): agent je přečte sám, aby model
+   * dostal skutečná data a s nimi i připomínku formátu. Vrací akce <read>, nebo null.
+   */
+  private async rescueReads(parsed: ParsedReply): Promise<{ actions: Action[]; note: string } | null> {
+    const seen = new Set<string>();
+    const paths: string[] = [];
+    for (const m of parsed.outside.matchAll(/(?<![\w/])((?:[\w.-]+\/)+[\w.-]+\.\w{1,10})(?![\w/])/g)) {
+      const p = m[1].replace(/^\.\//, "");
+      if (seen.has(p) || p.startsWith(".whisper/")) continue;
+      seen.add(p);
+      if (await this.host.exists(p)) paths.push(p);
+      if (paths.length >= 8) break;
+    }
+    if (paths.length === 0) return null;
+    const had = parsed.actions.length ? `held only ${parsed.actions.map((a) => `<${a.tool}>`).join(", ")}` : "had no block at all";
+    return {
+      actions: paths.map((path, index) => ({ tool: "read", attrs: { path }, index })),
+      note:
+        `Format requirement: every reply must contain the <whisper> block with the work inside it; yours ${had}, so nothing was applied: ` +
+        `the tool does not execute prose or fenced code outside the block, and the user will not retype it by hand. ` +
+        `To move on, the tool read the files your text mentions (results above). Now send the actual change as actions inside ` +
+        `<whisper turn="N">: <edit path="…"> with SEARCH/REPLACE hunks (or <write> for new files), <run> for the tests, then <done>. ` +
+        `Questions go into <ask options="A|B">…</ask> inside the block.`,
     };
   }
 
@@ -222,29 +310,51 @@ export class TurnEngine {
   async execute(session: SessionData, parsed: ParsedReply, promptChars: number, notes: string[] = [], ctx: RunContext = {}): Promise<StepResult> {
     const turn = session.turn;
     const agentNotes: string[] = [...parsed.notes];
-    if (parsed.actions.length === 0) {
-      const rescued = await this.rescueDocument(session, parsed);
-      if (!rescued) {
-        session.noBlockReplies = (session.noBlockReplies ?? 0) + 1;
-        const savedTo = await this.saveProse(session, parsed);
+    const noBlock = parsed.actions.length === 0;
+    const remarksOnly = TurnEngine.remarksOnly(parsed.actions);
+    if (noBlock || remarksOnly) {
+      const rescued = await this.rescueDocument(session, parsed, noBlock ? "raw" : "outside");
+      if (rescued) {
+        // zápis jde před ostatní akce; případné <done> vynecháme, ať model soubor zkontroluje a formát si osvojí
+        parsed = { ...parsed, actions: [rescued.action, ...parsed.actions.filter((a) => a.tool !== "done")] };
+        agentNotes.push(rescued.note);
+      } else {
+        const isDoc = !!TurnEngine.documentBody(parsed.outside);
         // dokument ze zadání, který už existuje: opravný prompt má vést k editacím, ne k novému <write>
-        const docPath = session.task.match(/(?:^|[\s"'`(])((?:[\w.-]+\/)*[\w.-]+\.(?:md|markdown|txt))(?=$|[\s"'`),.;:])/)?.[1];
+        const docPath = documentPathInTask(session.task);
         const existingDoc = docPath && (await this.host.exists(docPath)) ? docPath : undefined;
-        const prompt = buildCorrectionPrompt(session.id, turn, parsed.errors, {
-          task: session.task,
-          prose: parsed.prose || parsed.raw,
-          attempt: session.noBlockReplies,
-          userNotes: notes,
-          savedTo,
-          existingDoc,
-          preamble: this.statelessPreamble(session),
-        });
-        return { kind: "correction", prompt, errors: parsed.errors };
+        // próza, která zmiňuje existující soubory („změňte v todo/model.py…“, „pošlete mi obsah…“):
+        // soubory přečteme sami, model dostane skutečná data a s nimi připomínku formátu
+        const reads = isDoc && existingDoc ? null : await this.rescueReads(parsed);
+        if (reads) {
+          parsed = { ...parsed, actions: [...reads.actions, ...parsed.actions.filter((a) => a.tool !== "done")] };
+          agentNotes.push(reads.note);
+        } else if (noBlock || isDoc) {
+          // bez bloku, nebo dokument v chatu vedle bloku s pouhou poznámkou, který nešlo zachránit (cíl už existuje)
+          session.noBlockReplies = (session.noBlockReplies ?? 0) + 1;
+          const savedTo = await this.saveProse(session, parsed);
+          const errors = noBlock
+            ? parsed.errors
+            : [`The block held only ${parsed.actions.map((a) => `<${a.tool}>`).join(", ")}; the document was written outside the block, which the tool discards.`];
+          const prompt = buildCorrectionPrompt(session.id, turn, errors, {
+            task: session.task,
+            prose: noBlock ? parsed.prose || parsed.raw : parsed.outside,
+            attempt: session.noBlockReplies,
+            userNotes: notes,
+            savedTo,
+            existingDoc,
+            preamble: this.statelessPreamble(session),
+          });
+          return { kind: "correction", prompt, errors };
+        }
       }
-      parsed = { ...parsed, actions: [rescued.action] };
-      agentNotes.push(rescued.note);
     }
     session.noBlockReplies = 0;
+    const hollow = TurnEngine.rescueHollowWrite(parsed);
+    if (hollow) {
+      parsed = { ...parsed, actions: parsed.actions.map((a) => (a === hollow.action ? hollow.replacement : a)) };
+      agentNotes.push(hollow.note);
+    }
     const startedAt = Date.now();
     const outcome = await this.runner.runAll(parsed.actions, turn, ctx);
     if (ctx.signal?.aborted) {
@@ -274,6 +384,10 @@ export class TurnEngine {
       errors: parsed.errors.length ? parsed.errors : undefined,
       dialog: outcome.dialog.length ? outcome.dialog : undefined,
     };
+    // výsledky kola s <ask>, na které uživatel odpověděl v chatu (agent je neposlal), jdou s tímto kolem
+    const prev = session.history[session.history.length - 1];
+    const carried = prev?.undelivered ? prev.results.filter((r) => r.tool !== "ask") : [];
+    if (prev) prev.undelivered = false;
     session.history.push(record);
     session.summaries.push(summarizeTurn(turn, outcome.results, statusNote));
     session.turn = turn + 1;
@@ -293,14 +407,17 @@ export class TurnEngine {
         ...notes,
       ];
     }
-    if (outcome.question !== undefined) return { kind: "ask", question: outcome.question, options: outcome.questionOptions, multi: outcome.questionMulti, record };
+    if (outcome.question !== undefined) {
+      record.undelivered = true;
+      return { kind: "ask", question: outcome.question, options: outcome.questionOptions, multi: outcome.questionMulti, record };
+    }
 
     const diagnostics = outcome.changedFiles ? await collectDiagnosticsSettled(this.host) : undefined;
     const prompt = buildResultsPrompt(
       session.id,
       session.turn,
-      outcome.results,
-      { diagnostics, userNotes: notes, parseErrors: parsed.errors, agentNotes },
+      [...carried, ...outcome.results],
+      { diagnostics, userNotes: notes, parseErrors: parsed.errors, agentNotes, docTarget: await this.docTarget(session) },
       this.optsFor(session),
       session.summaries,
       this.statelessPreamble(session),

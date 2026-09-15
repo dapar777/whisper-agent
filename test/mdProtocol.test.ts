@@ -102,6 +102,30 @@ describe("markdown documents in replies (parser)", () => {
   });
 });
 
+describe("HTML-escaped protocol tags", () => {
+  it("decodes a reply whose tags were escaped as &lt;…&gt; and tells the model", () => {
+    const doc = "# Navrh\n\n## Cile\n\n- a\n- b\n- c\n\n" + "text ".repeat(100);
+    const reply =
+      "Tady je blok:\n\n```xml\n&lt;whisper turn=\"1\"&gt;\n  &lt;status&gt;jdu na to&lt;/status&gt;\n  &lt;write path=\"docs/navrh.md\"&gt;\n" +
+      doc +
+      "\n  &lt;/write&gt;\n  &lt;done&gt;hotovo&lt;/done&gt;\n&lt;/whisper&gt;\n```\n\n**Notes**\n- Špičaté závorky jsem převedl na entity.\n";
+    const p = parseReply(reply, 1);
+    expect(p.errors).toEqual([]);
+    expect(p.actions.map((a) => a.tool)).toEqual(["status", "write", "done"]);
+    expect(p.actions[1].attrs.path).toBe("docs/navrh.md");
+    expect(p.actions[1].body).toContain("## Cile");
+    expect(p.notes[0]).toMatch(/HTML-escaped/);
+    expect(p.raw).toBe(reply);
+  });
+
+  it("leaves a normal reply alone even when it mentions &lt;whisper&gt; in prose", () => {
+    const reply = 'Pozn.: tag &lt;whisper&gt; se nepíše do fence.\n<whisper turn="1"><read path="a.ts"/></whisper>';
+    const p = parseReply(reply, 1);
+    expect(p.actions.map((a) => a.tool)).toEqual(["read"]);
+    expect(p.notes).toEqual([]);
+  });
+});
+
 describe("markdown sections", () => {
   const MD = ["# Navrh", "", "## Cile", "", "- a", "", "## Rizika", "", "- r1", "", "```python", "# ne nadpis", "```", "", "### Rizika: detail", "", "text", "", "## Otevřené otázky", "", "1. co", ""].join("\n");
 
@@ -200,14 +224,14 @@ describe("block-less replies", () => {
     const doc = "# Navrh\n\n## Cile\n- a\n- b\n- c\n" + "x".repeat(400);
     const p1 = buildCorrectionPrompt("s", 2, ["No <whisper> block"], { task: "Napiš docs/navrh.md", prose: doc, attempt: 1, userNotes: ["pozn"], savedTo: ".whisper/out/reply-2-1.md" });
     expect(p1).toMatch(/NOTHING was executed/);
-    expect(p1).toContain('<write path="docs/NAME.md">');
+    expect(p1).toContain('<write path="docs/navrh.md">');
     expect(p1).toContain("<task>Napiš docs/navrh.md</task>");
     expect(p1).toContain("<user>pozn</user>");
     expect(p1).toContain(".whisper/out/reply-2-1.md");
     expect(p1).not.toMatch(/correction attempt/);
     const p2 = buildCorrectionPrompt("s", 2, [], { prose: doc, attempt: 2 });
     expect(p2).toMatch(/correction attempt 2/);
-    expect(p2).toMatch(/start your reply with <whisper turn="2">/);
+    expect(p2).toMatch(/Start your reply with <whisper turn="2">/);
   });
 
   it("for an existing document the correction points to section edits, not to a full <write>", () => {
@@ -216,7 +240,7 @@ describe("block-less replies", () => {
     expect(p).toMatch(/NOTHING was changed/);
     expect(p).toContain('<edit path="docs/navrh.md" section="## Existing heading">');
     expect(p).toContain('insert="before"');
-    expect(p).not.toContain('<write path="docs/NAME.md">');
+    expect(p).not.toContain('<write path="docs/navrh.md">');
   });
 
   it("the preamble carries the documents rule", () => {

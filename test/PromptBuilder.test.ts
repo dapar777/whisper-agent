@@ -20,7 +20,7 @@ describe("buildInitialPrompt", () => {
     expect(p).toContain("Run tests with npm test.");
     expect(p).toContain("src/\n  a.ts");
     expect(p).toContain("Add email validation");
-    expect(p).toContain('Reply with <whisper turn="1">');
+    expect(p).toContain('Odpověď mi prosím dej v bloku <whisper turn="1">');
   });
 
   it("examples in the preamble are themselves parseable", () => {
@@ -30,6 +30,31 @@ describe("buildInitialPrompt", () => {
     const parsed = parseReply(`<whisper turn="1">\n${examples.join("\n")}\n</whisper>`);
     expect(parsed.errors).toEqual([]);
     expect(parsed.actions).toHaveLength(examples.length);
+  });
+
+  it("frames the tool as the user's copy-paste, never as a capability of the model", () => {
+    const p = buildInitialPrompt("s1", "t", ctx, DEFAULT_OPTIONS);
+    expect(p).toContain("copies your ENTIRE reply into a");
+    expect(p).toContain("You need no plugin, file access or integration for this: the program does the file work, you\nwrite the requests.");
+    expect(p).not.toMatch(/connected to the user's VS Code/);
+    expect(p).toMatch(/do it in one sentence; it changes nothing, the block is still\nwhat the program needs/);
+    expect(p).toMatch(/Prose that explains what the user should change, or code\nin a ``` fence outside the block, is lost/);
+    expect(p).toContain("do not escape < as &lt;");
+  });
+
+  it("ends a document task with the concrete <write> shape of the expected reply", () => {
+    const p = buildInitialPrompt("s1", "Napiš návrh do docs/navrh-x.md se sekcemi Cíle a Rizika.", ctx, DEFAULT_OPTIONS);
+    expect(p.trimEnd().endsWith('<write path="docs/navrh-x.md">\n…celý dokument…\n</write>\n<done>krátké shrnutí</done>\n</whisper>')).toBe(true);
+    // úloha bez dokumentu: kostra průzkumného kola, ne <write>
+    const plain = buildInitialPrompt("s1", "Oprav test.", ctx, DEFAULT_OPTIONS);
+    expect(plain).toMatch(/První krok je obvykle vyžádat si vše, co potřebuješ vidět, např\.:\n<whisper turn="1">\n<read path="cesta\/k\/souboru"\/>/);
+    expect(plain).not.toContain("Výstupem tohoto zadání je soubor");
+    expect(plain.slice(-700)).not.toContain("<write path=");
+    const en = buildInitialPrompt("s1", "Write docs/plan.md.", ctx, { ...DEFAULT_OPTIONS, language: "en" });
+    expect(en).toMatch(/The output of this task is the file docs\/plan.md, not chat text\. Write the document once, inside the block[^\n]*\n<whisper turn="1">\n<write path="docs\/plan.md">/);
+    // v dalších kolech už žádná kostra, jen připomínka
+    const next = buildResultsPrompt("s1", 2, [], {}, DEFAULT_OPTIONS);
+    expect(next).toMatch(/Pokračuj\. Odpověď mi prosím dej v bloku <whisper turn="2">[^\n]*poznámky napiš až za něj\.\n<\/whisper-results>/);
   });
 });
 
@@ -48,7 +73,7 @@ describe("buildResultsPrompt", () => {
     expect(p).toContain('exit="1"');
     expect(p).toContain("<diagnostics>\na.ts:1:1 error x\n</diagnostics>");
     expect(p).toContain("<user>rejected edit</user>");
-    expect(p).toContain('Reply with <whisper turn="3">');
+    expect(p).toContain('Pokračuj. Odpověď mi prosím dej v bloku <whisper turn="3">');
     expect(p).not.toContain("## Protocol");
   });
 

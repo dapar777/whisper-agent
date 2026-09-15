@@ -32,11 +32,11 @@ describe("TurnEngine", () => {
       expect(step.multi).toBe(true);
     }
     expect(session.turn).toBe(2);
-    const prompt = engine.answerPrompt(session, "the first", []);
+    const prompt = await engine.answerPrompt(session, "the first", []);
     expect(prompt).toContain('<result of="read" path="a.txt" status="ok"');
     expect(prompt).toContain("1| hello");
     expect(prompt).toContain("<user>Answer to your question: the first</user>");
-    expect(prompt).toContain('Reply with <whisper turn="2">');
+    expect(prompt).toContain('Odpověď mi prosím dej v bloku <whisper turn="2">');
   });
 
   it("continues instead of finishing when an action before <done> fails", async () => {

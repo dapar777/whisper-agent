@@ -22,6 +22,8 @@ export interface TurnRecord {
   errors?: string[];
   /** přímé výměny v chatu zapsané modelem přes <dialog> */
   dialog?: { from: "model" | "user"; text: string }[];
+  /** výsledky kola s <ask> ještě nebyly modelu odeslány (uživatel odpověděl v chatu) */
+  undelivered?: boolean;
 }
 
 export interface SessionData {
