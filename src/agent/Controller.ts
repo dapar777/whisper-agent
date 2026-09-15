@@ -720,7 +720,7 @@ export class Controller implements vscode.Disposable {
         bundleUsage: cfg<BundleUsage>("bundle.usage", "encourage"),
         reviewBeforeDone: cfg("review.beforeDone", true),
         initialBundle: cfg<"off" | "full">("bundle.initial", "off"),
-        initialBundleMaxChars: cfg("bundle.initialMaxChars", 400000),
+        initialBundleFormat: cfg<"compact" | "numbered">("bundle.initialFormat", "compact"),
       },
       listener,
     ) as TurnEngine & { hostRef(): VsCodeHost };

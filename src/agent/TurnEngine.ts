@@ -150,15 +150,21 @@ export class TurnEngine {
    */
   async attachInitialBundle(session: SessionData, ctx: ProjectContext, turn: number): Promise<string[]> {
     if (this.opts.initialBundle !== "full") return [];
-    const maxChars = String(this.opts.initialBundleMaxChars ?? 400_000);
-    const b = await toolBundle(this.host, { all: "true", maxChars }, turn, 0);
+    // full bundle: bez limitu (patří tam všechno), výchozí úsporný formát bez čísel řádků
+    const b = await toolBundle(this.host, { all: "true" }, turn, 0, { unlimited: true, format: this.opts.initialBundleFormat ?? "compact" });
     const output = b.output ?? "";
     if (b.status !== "ok" || !b.attachments?.length) {
       this.host.log(`⚠ úvodní svazek celé codebase se nepovedl: ${output.split("\n")[0]}`);
       return [];
     }
     const skipped = (output.match(/^Skipped:\n((?:  .*\n?)+)/m)?.[1] ?? "").split("\n").filter((l) => l.trim()).length;
-    ctx.initialBundle = { file: String(b.meta?.file ?? b.attachments[0]), files: Number(b.meta?.files ?? 0), chars: Number(b.meta?.chars ?? 0), skipped };
+    ctx.initialBundle = {
+      file: String(b.meta?.file ?? b.attachments[0]),
+      files: Number(b.meta?.files ?? 0),
+      chars: Number(b.meta?.chars ?? 0),
+      skipped,
+      format: this.opts.initialBundleFormat ?? "compact",
+    };
     this.host.log(`📦 úvodní svazek celé codebase: ${ctx.initialBundle.file} (${ctx.initialBundle.files} souborů, ${ctx.initialBundle.chars} znaků)`);
     void session;
     return b.attachments;

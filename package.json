@@ -93,13 +93,17 @@
           "type": "string", "enum": ["off", "full"], "default": "off",
           "enumDescriptions": [
             "Model si soubory vyžádá sám (<read>, <bundle>).",
-            "K úvodnímu promptu (a k „Poslat celý kontext znovu“) se rovnou přiloží svazek s celou codebase (číslované řádky, bez binárních a obřích souborů); doručí se podle whisper.bundle.delivery."
+            "K úvodnímu promptu (a k „Poslat celý kontext znovu“) se rovnou přiloží svazek s celou codebase: vše kromě binárních souborů, bez limitu velikosti; doručí se podle whisper.bundle.delivery."
           ],
           "description": "Full bundle: přiložit celou codebase už k úvodnímu promptu, aby model nemusel soubory vyžadovat po kolech."
         },
-        "whisper.bundle.initialMaxChars": {
-          "type": "number", "default": 400000,
-          "description": "Limit velikosti úvodního svazku celé codebase ve znacích; co se nevejde, svazek vypíše jako přeskočené."
+        "whisper.bundle.initialFormat": {
+          "type": "string", "enum": ["compact", "numbered"], "default": "compact",
+          "enumDescriptions": [
+            "Úsporný: každý soubor jen s hlavičkou '===== FILE: cesta =====' a obsahem beze změny, bez čísel řádků (hunky je nepotřebují).",
+            "Stejný tvar jako <bundle>: číslované řádky, koncové značky, obsah na začátku."
+          ],
+          "description": "Formát úvodního svazku celé codebase."
         },
         "whisper.bundle.python": {
           "type": "string", "default": "python",

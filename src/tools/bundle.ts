@@ -9,9 +9,17 @@ const DEFAULT_MAX_CHARS = 400_000;
 const MAX_FILE_CHARS = 200_000;
 const BINARY_EXT = /\.(png|jpe?g|gif|bmp|ico|webp|svgz|pdf|zip|gz|tgz|7z|rar|jar|exe|dll|so|dylib|bin|dat|db|sqlite|woff2?|ttf|otf|eot|mp[34]|wav|ogg|mov|avi|lock)$/i;
 
-/** Jedna sekce svazku: hlavička, číslované řádky, patička. */
-function renderFile(p: string, text: string): string {
+export interface BundleOptions {
+  /** bez limitu velikosti svazku i jednotlivých souborů (full bundle: patří tam všechno) */
+  unlimited?: boolean;
+  /** compact = bez čísel řádků, koncových značek a úvodního obsahu (úspornější; hunky čísla nepotřebují) */
+  format?: "numbered" | "compact";
+}
+
+/** Jedna sekce svazku: hlavička, číslované řádky, patička; compact = hlavička a obsah beze změny. */
+function renderFile(p: string, text: string, format: "numbered" | "compact"): string {
   const lines = text.split(/\r?\n/);
+  if (format === "compact") return [`===== FILE: ${p} (${lines.length} lines) =====`, text.replace(/\r\n/g, "\n").replace(/\n+$/, "")].join("\n");
   const width = String(lines.length).length;
   return [`===== FILE: ${p} (${lines.length} lines) =====`, ...lines.map((l, i) => `${String(i + 1).padStart(width)}| ${l}`), `===== END FILE: ${p} =====`].join("\n");
 }
@@ -27,8 +35,10 @@ interface Picked {
  * strukturovaného textového souboru v .whisper/out/, který se přiloží k dalšímu promptu.
  * Každý soubor má hlavičku, číslované řádky a patičku, na začátku je obsah svazku.
  */
-export async function toolBundle(host: Host, attrs: Record<string, string>, turn: number, index: number): Promise<ActionResult> {
-  const maxChars = Math.min(2_000_000, Math.max(20_000, Number(attrs.maxChars) || DEFAULT_MAX_CHARS));
+export async function toolBundle(host: Host, attrs: Record<string, string>, turn: number, index: number, opts: BundleOptions = {}): Promise<ActionResult> {
+  const format = opts.format ?? "numbered";
+  const maxChars = opts.unlimited ? Infinity : Math.min(2_000_000, Math.max(20_000, Number(attrs.maxChars) || DEFAULT_MAX_CHARS));
+  const maxFileChars = opts.unlimited ? Infinity : MAX_FILE_CHARS;
   const all = attrs.all === "true" || attrs.all === "1";
   const patterns = (attrs.paths ?? "")
     .split(/[\n,]/)
@@ -82,12 +92,12 @@ export async function toolBundle(host: Host, attrs: Record<string, string>, turn
       skipped.push(`${p} (binary)`);
       continue;
     }
-    if (text.length > MAX_FILE_CHARS) {
+    if (text.length > maxFileChars) {
       skipped.push(`${p} (${text.length} chars, too large; use <read lines=>)`);
       continue;
     }
     // limit platí pro výslednou velikost (s hlavičkami a čísly řádků), ne pro holý obsah
-    const rendered = renderFile(p, text);
+    const rendered = renderFile(p, text, format);
     if (total + rendered.length > maxChars) {
       skipped.push(`${p} (bundle limit ${maxChars} chars reached)`);
       continue;
@@ -107,11 +117,19 @@ export async function toolBundle(host: Host, attrs: Record<string, string>, turn
   const created = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
   const out: string[] = [];
   out.push(`${BUNDLE_MARKER}: ${picked.length} files, project "${host.workspaceName}", turn ${turn}, created ${created}`);
-  out.push("# Each file: '===== FILE: <path> (<n> lines) =====', numbered lines 'N| text', '===== END FILE ====='.");
-  out.push("# Contents:");
-  for (const f of picked) out.push(`#   ${f.path} (${f.lines} lines)`);
-  out.push("");
-  for (const f of picked) out.push(f.text, "");
+  if (format === "compact") {
+    // úsporný tvar: bez čísel řádků, koncových značek a obsahu (strom projektu je v promptu)
+    out.push("# Each file starts with '===== FILE: <path> (<n> lines) =====' and runs verbatim until the next such line; no line numbers.");
+    if (skipped.length) out.push(`# Skipped: ${skipped.join("; ")}`);
+    out.push("");
+    for (const f of picked) out.push(f.text, "");
+  } else {
+    out.push("# Each file: '===== FILE: <path> (<n> lines) =====', numbered lines 'N| text', '===== END FILE ====='.");
+    out.push("# Contents:");
+    for (const f of picked) out.push(`#   ${f.path} (${f.lines} lines)`);
+    out.push("");
+    for (const f of picked) out.push(f.text, "");
+  }
   const content = out.join("\n");
   const rel = `.whisper/out/bundle-${turn}-${index}-${stamp}.txt`;
   await host.writeFile(rel, content);
