@@ -672,6 +672,11 @@ export class Controller implements vscode.Disposable {
             copyMode = "none";
             continue;
           case "next":
+            if (step.review) {
+              const line = `🔍 Revize ${step.review.round}: model poslal done, posílám mu celé znění ${step.review.files.length} změněných souborů a ptám se, zda je hotovo vše. Finální je až done reviewed="true".`;
+              this.pushItem({ kind: "status", turn: s.turn, text: line });
+              await this.transcript?.append({ session: s.id, kind: "status", turn: s.turn, text: line });
+            }
             prompt = step.prompt;
             attachments = step.attachments;
         }
@@ -709,6 +714,7 @@ export class Controller implements vscode.Disposable {
         continuousSuggest: cfg("suggest.continuous", false),
         directDialog: cfg("ask.direct", true),
         bundleUsage: cfg<BundleUsage>("bundle.usage", "encourage"),
+        reviewBeforeDone: cfg("review.beforeDone", true),
       },
       listener,
     ) as TurnEngine & { hostRef(): VsCodeHost };

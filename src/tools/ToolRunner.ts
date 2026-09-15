@@ -42,6 +42,8 @@ export interface RunOutcome {
   /** nový/aktualizovaný plán (markdown) */
   plan?: string;
   suggestions: SuggestionDraft[];
+  /** <done reviewed="true">: model tvrdí, že práci po revizi zkontroloval */
+  doneReviewed?: boolean;
   question?: string;
   /** možnosti odpovědi u <ask options="A|B">; multi = lze vybrat více */
   questionOptions?: string[];
@@ -142,6 +144,7 @@ export class ToolRunner {
         }
         case "done":
           outcome.done = a.body ?? "";
+          outcome.doneReviewed = /^(true|1|yes|ano)$/i.test(a.attrs.reviewed ?? "");
           return undefined;
         default:
           return { tool: a.tool, attrs: a.attrs, status: "error", output: `Unknown action ${a.tool}` };

@@ -15,7 +15,7 @@ describe("TurnEngine", () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "whisper-engine-"));
     fs.writeFileSync(path.join(dir, "a.txt"), "hello\nworld\n");
     const host = new NodeHost(dir, { autoConfirm: true, log: () => undefined });
-    engine = new TurnEngine(host, { ...DEFAULT_OPTIONS, treeMaxEntries: 50 });
+    engine = new TurnEngine(host, { ...DEFAULT_OPTIONS, treeMaxEntries: 50, reviewBeforeDone: false });
   });
 
   afterEach(() => {

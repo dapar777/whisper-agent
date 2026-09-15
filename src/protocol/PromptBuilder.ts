@@ -16,6 +16,8 @@ export interface BuilderOptions {
   directDialog?: boolean;
   /** jak silně pobízet model k <bundle> místo mnoha <read> */
   bundleUsage?: BundleUsage;
+  /** první <done> po změnách souborů vyvolá revizi (svazek změněných souborů), finální je <done reviewed="true"> */
+  reviewBeforeDone?: boolean;
 }
 
 /** Stupně používání hromadných txt svazků (<bundle>). */
@@ -255,7 +257,13 @@ export function buildRules(opts: BuilderOptions): string {
     "Use <ask> when the task is ambiguous or a change is risky (deleting data, changing public APIs).",
     "Finish with <done> containing a summary for the user. <done> may come at the END of a block after final\n" +
       "actions (a last edit, a test run) so you do not spend an extra turn; if any of those actions fails, the\n" +
-      "task continues and you get the results instead. Nothing may follow <done>.",
+      "task continues and you get the results instead. Nothing may follow <done>." +
+      (opts.reviewBeforeDone === false
+        ? ""
+        : "\nREVIEW BEFORE DONE: when files were changed, the first <done> is not final. The tool replies with a review\n" +
+          "request and a bundle holding the complete current content of every changed file. Review the whole work\n" +
+          "against the task (other files, tests, docs too; several turns if needed), fix what is missing with <edit>,\n" +
+          'and finish with <done reviewed="true">. Any further file change triggers one more review of the changes.'),
     `Write <status>, <ask> and <done> texts in language "${opts.language}"; code and identifiers stay as in the project.`,
     "If a previous action failed, read the error, adjust and retry; do not repeat the identical action.",
   ];

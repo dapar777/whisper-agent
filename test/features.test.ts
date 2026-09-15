@@ -18,7 +18,7 @@ describe("plan, suggest, hooks, transcript", () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "whisper-feat-"));
     fs.writeFileSync(path.join(dir, "a.ts"), "export const a = 1;\n");
     host = new NodeHost(dir, { autoConfirm: true, log: () => undefined });
-    engine = new TurnEngine(host, { ...DEFAULT_OPTIONS, treeMaxEntries: 50 });
+    engine = new TurnEngine(host, { ...DEFAULT_OPTIONS, treeMaxEntries: 50, reviewBeforeDone: false });
   });
 
   afterEach(() => {

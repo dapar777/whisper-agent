@@ -138,6 +138,10 @@
           "type": "boolean", "default": true,
           "description": "Model smí u větších úkolů sám založit a udržovat plán (checklist v .whisper/plan.md). /plan ho vynutí vždy."
         },
+        "whisper.review.beforeDone": {
+          "type": "boolean", "default": true,
+          "description": "Revize před dokončením: první <done> po změnách souborů není finální. Agent modelu pošle svazek s celým zněním všech změněných souborů a výzvu zkontrolovat celou práci (i jinde, klidně na víc kol); finální je až <done reviewed=\"true\">. Každá další změna vyvolá další revizi."
+        },
         "whisper.run.deny": {
           "type": "array", "items": { "type": "string" },
           "default": ["rm -rf", "git push --force", "git push -f", "sudo", "format ", "del /s", "Remove-Item -Recurse"],

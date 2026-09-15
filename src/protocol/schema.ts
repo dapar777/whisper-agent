@@ -199,9 +199,9 @@ export const TOOLS: ToolDef[] = [
   {
     name: "done",
     hasBody: true,
-    attrs: [],
+    attrs: [{ name: "reviewed", required: false, doc: '"true" only after the review round the tool asks for (see rules): a first <done> after file changes is never final' }],
     bodyDoc: "final summary: what changed, how it was verified, what remains",
-    doc: "Finish the task. Put it last; it may follow final actions in the same block (if one of them fails, the task continues).",
+    doc: "Finish the task. Put it last; it may follow final actions in the same block (if one of them fails, the task continues). After file changes the tool first asks you to review the work; finish then with <done reviewed=\"true\">.",
     example: "<done>Přidána validace e-mailu v RegisterForm, testy prochází.</done>",
   },
 ];

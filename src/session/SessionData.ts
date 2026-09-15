@@ -54,6 +54,12 @@ export interface SessionData {
   notes?: string[];
   /** kolik odpovědí bez bloku akcí přišlo za sebou (tolerance dialogu, pak opravné prompty) */
   noBlockReplies?: number;
+  /** soubory změněné během úlohy (pro revizi před dokončením) */
+  changedFiles?: string[];
+  /** soubory změněné od poslední výzvy k revizi; neprázdné = další <done> vyvolá revizi */
+  changedSinceReview?: string[];
+  /** kolikrát už byla vyžádána revize */
+  reviewRounds?: number;
 }
 
 export type SuggestionKind = "skill" | "script" | "whisper" | "rule" | "hook" | "allow" | "setting" | "task" | "agent";

@@ -40,7 +40,7 @@ function engineIn(files: Record<string, string> = {}) {
     fs.writeFileSync(path.join(root, rel), content, "utf8");
   }
   const host = new NodeHost(root, { autoConfirm: true, log: () => undefined });
-  const engine = new TurnEngine(host, { mode: "stateful", maxChars: 60000, resultMaxChars: 12000, language: "cs", treeMaxEntries: 50 });
+  const engine = new TurnEngine(host, { mode: "stateful", maxChars: 60000, resultMaxChars: 12000, language: "cs", treeMaxEntries: 50, reviewBeforeDone: false });
   return { root, engine };
 }
 

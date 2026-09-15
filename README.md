@@ -107,6 +107,14 @@ zvládnou setextové podtržení, typografické uvozovky, přeformátované odst
 zkopírovaná čísla řádků, a nejednoznačný SEARCH odmítnou místo tichého zásahu do prvního výskytu.
 Dlouhý soubor bez `lines=` vrátí osnovu (nadpisy nebo deklarace s čísly řádků).
 
+**Revize před dokončením** (`whisper.review.beforeDone`, výchozí zapnuto): první `<done>` po změnách
+souborů není finální. Agent modelu odpoví výzvou k revizi a přiloží svazek s celým aktuálním zněním
+všech souborů změněných v úloze; model má zkontrolovat celou práci proti zadání (i jinde: druhá verze,
+testy, dokumentace), klidně na víc kol, opravit nálezy a skončit `<done reviewed="true">`. Každá další
+změna souboru vyvolá další kolo revize jen nad tím, co se od minula změnilo; `<done>` bez dalších změn
+je finální. Úloha bez změn souborů (vysvětlení, review) revizi nepotřebuje. V panelu revizi poznáte
+podle řádku „🔍 Revize N“.
+
 **Přímý dialog** (`whisper.ask.direct`, výchozí zapnuto): model se smí ptát přímo v chatu
 a vy tam odpovíte nebo cokoli dopíšete; v dalším bloku to zapíše akcemi `<dialog>`, takže
 výměna je v průběhu i v transkriptu. Odpověď bez bloku akcí se bere jako otázka v chatu,

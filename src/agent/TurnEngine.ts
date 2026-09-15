@@ -22,12 +22,13 @@ import { parseReply } from "../protocol/ResponseParser";
 
 /** Akce, které samy nic nemění: blok složený jen z nich je „jen poznámka“. */
 const REMARK_TOOLS = new Set(["status", "dialog", "plan", "done", "think"]);
-import { Action, ParsedReply } from "../protocol/schema";
+import { Action, ActionResult, ParsedReply } from "../protocol/schema";
+import { toolBundle } from "../tools/bundle";
 import { nowId } from "../protocol/text";
 import { SessionData, Suggestion, TurnRecord } from "../session/SessionData";
 import { collectDiagnosticsSettled } from "../tools/diagnostics";
 import { renderTree } from "../tools/fs";
-import { ChangeListener, PLAN_FILE, RunContext, ToolRunner } from "../tools/ToolRunner";
+import { ChangeListener, PLAN_FILE, RunContext, RunOutcome, ToolRunner } from "../tools/ToolRunner";
 
 /**
  * Ořízne chatové věty kolem dokumentu napsaného do chatu: úvod před prvním nadpisem
@@ -63,7 +64,7 @@ export function trimChatter(body: string): { body: string; dropped: string[] } {
 
 export type StepResult =
   | { kind: "correction"; prompt: string; errors: string[] }
-  | { kind: "next"; prompt: string; record: TurnRecord; attachments: string[] }
+  | { kind: "next"; prompt: string; record: TurnRecord; attachments: string[]; review?: { round: number; files: string[] } }
   | { kind: "done"; summary: string; record: TurnRecord }
   | { kind: "ask"; question: string; options?: string[]; multi?: boolean; record: TurnRecord };
 
@@ -399,9 +400,20 @@ export class TurnEngine {
       ];
     }
 
+    // změněné soubory úlohy: pro revizi před dokončením
+    if (outcome.changedPaths.length) {
+      session.changedFiles = [...new Set([...(session.changedFiles ?? []), ...outcome.changedPaths])];
+      session.changedSinceReview = [...new Set([...(session.changedSinceReview ?? []), ...outcome.changedPaths])];
+    }
     const failed = outcome.results.filter((r) => r.status !== "ok");
-    if (outcome.done !== undefined && failed.length === 0) return { kind: "done", summary: outcome.done, record };
-    if (outcome.done !== undefined) {
+    let review: { round: number; files: string[] } | undefined;
+    if (outcome.done !== undefined && failed.length === 0) {
+      const r = await this.reviewBeforeDone(session, outcome, turn);
+      if (!r) return { kind: "done", summary: outcome.done, record };
+      notes = [r.note, ...notes];
+      if (r.bundle) outcome.results.push(r.bundle);
+      review = { round: r.round, files: r.files };
+    } else if (outcome.done !== undefined) {
       notes = [
         `You sent <done>, but ${failed.length} action(s) in that block did not succeed (see results). The task continues: fix the problem, or send <done> again if the failure is acceptable and explain why.`,
         ...notes,
@@ -423,7 +435,47 @@ export class TurnEngine {
       this.statelessPreamble(session),
     );
     // i přílohy z kola s <ask>, které modelu ještě nedošly (uživatel odpověděl v chatu)
-    return { kind: "next", prompt, record, attachments: [...carried, ...outcome.results].flatMap((r) => r.attachments ?? []) };
+    return { kind: "next", prompt, record, review, attachments: [...carried, ...outcome.results].flatMap((r) => r.attachments ?? []) };
+  }
+
+  /**
+   * Revize před dokončením: první <done> po změnách souborů není finální. Model dostane svazek
+   * s celým aktuálním obsahem všech souborů změněných v úloze a výzvu zkontrolovat celou práci
+   * (i mimo tyto soubory, klidně na víc kol) a skončit <done reviewed="true">. Každá další změna
+   * vyvolá další revizi; <done> bez změn od poslední výzvy je finální. Vrací null = done platí.
+   */
+  private async reviewBeforeDone(
+    session: SessionData,
+    outcome: RunOutcome,
+    turn: number,
+  ): Promise<{ note: string; bundle?: ActionResult; round: number; files: string[] } | null> {
+    if (this.opts.reviewBeforeDone === false) return null;
+    const pending = session.changedSinceReview ?? [];
+    if (pending.length === 0) return null;
+    const files: string[] = [];
+    for (const p of session.changedFiles ?? []) if (await this.host.exists(p)) files.push(p);
+    const round = (session.reviewRounds ?? 0) + 1;
+    session.reviewRounds = round;
+    session.changedSinceReview = [];
+    let bundle: ActionResult | undefined;
+    if (files.length) {
+      const b = await toolBundle(this.host, { paths: files.join(", ") }, turn, 90 + round);
+      if (b.status === "ok") bundle = b;
+    }
+    const attached = bundle
+      ? `Attached is a bundle with the COMPLETE current content of every file you changed in this task (${files.length}: ${files.join(", ")}).`
+      : `The files you changed in this task: ${files.join(", ") || "(none left)"}; read them with <read> or <bundle>.`;
+    const sent = outcome.doneReviewed ? '<done reviewed="true">' : "<done>";
+    const head =
+      round === 1
+        ? `REVIEW BEFORE DONE: you sent ${sent}, but in this session the first <done> after file changes is not final; review the work first. ${attached}`
+        : `REVIEW BEFORE DONE (round ${round}): you sent ${sent}, but since the last review you changed ${pending.join(", ")}. ${attached} Review the new changes and their effect on the rest.`;
+    const note =
+      `${head} Check the WHOLE work against the task, not only these files: is everything the task asked for done, in every place it belongs ` +
+      `(both versions, tests, docs, config)? Anything forgotten, inconsistent, half-done or left as a placeholder? Does every file read as valid, ` +
+      `complete code or text? Read other files, grep or run tests if that helps; take several turns if needed. Fix what you find with small <edit> hunks. ` +
+      `When you are satisfied, finish with <done reviewed="true"> and a summary of what you checked. If you change any file, the tool asks for one more review.`;
+    return { note, bundle, round, files };
   }
 
   /** Přílohy (svazky, obrázky) z kola s <ask>, které modelu ještě nebyly doručeny. */
