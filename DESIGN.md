@@ -243,7 +243,11 @@ nemůžeš“) přísný model četl jako nepravdivé tvrzení o svých schopnos
 přeformulování (nástroj = program, do kterého uživatel odpověď kopíruje; připomínka na konci v jazyce
 zadání s konkrétní kostrou odpovědi) vrátil blok s celým dokumentem ve `<write>` hned v první odpovědi.
 Zbylé tvary (dokument v chatu + dutý blok, escapované značky) zachytí záchranné sítě výše, takže úloha
-skončila v jednom kole i u nich.
+skončila v jednom kole i u nich. U kódové úlohy („doplň sloupec created do exportu“) přísný model v prvním
+kole ještě radil v próze a chtěl poslat obsah souborů; agent mu je přečetl sám a v druhém kole už poslal
+holý blok na začátku odpovědi: plán, čtyři `<edit>` (všechny hunky prošly), testy, `<diagnostics/>` a
+`<ask>`. Rozhodující byla podle něj připomínka v první osobě v jazyce uživatele a předvedené selhání
+(`<protocol-error>` + `<note>`), ne anglická preambule.
 
 ## 4. Architektura extensionu
 
