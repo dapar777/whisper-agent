@@ -144,6 +144,26 @@ export class TurnEngine {
     return buildInitialPrompt(session.id, session.task, ctx, o);
   }
 
+  /**
+   * whisper.bundle.initial = full: svazek s celou codebase k úvodnímu promptu (a k novému kontextu).
+   * Doplní ctx.initialBundle (text do promptu) a vrátí přílohy; jinak prázdné pole.
+   */
+  async attachInitialBundle(session: SessionData, ctx: ProjectContext, turn: number): Promise<string[]> {
+    if (this.opts.initialBundle !== "full") return [];
+    const maxChars = String(this.opts.initialBundleMaxChars ?? 400_000);
+    const b = await toolBundle(this.host, { all: "true", maxChars }, turn, 0);
+    const output = b.output ?? "";
+    if (b.status !== "ok" || !b.attachments?.length) {
+      this.host.log(`⚠ úvodní svazek celé codebase se nepovedl: ${output.split("\n")[0]}`);
+      return [];
+    }
+    const skipped = (output.match(/^Skipped:\n((?:  .*\n?)+)/m)?.[1] ?? "").split("\n").filter((l) => l.trim()).length;
+    ctx.initialBundle = { file: String(b.meta?.file ?? b.attachments[0]), files: Number(b.meta?.files ?? 0), chars: Number(b.meta?.chars ?? 0), skipped };
+    this.host.log(`📦 úvodní svazek celé codebase: ${ctx.initialBundle.file} (${ctx.initialBundle.files} souborů, ${ctx.initialBundle.chars} znaků)`);
+    void session;
+    return b.attachments;
+  }
+
   async resumePrompt(session: SessionData, ctx: ProjectContext): Promise<string> {
     const o = this.optsFor(session);
     this.preamble = buildPreamble(ctx, o);

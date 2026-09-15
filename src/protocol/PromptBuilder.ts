@@ -18,6 +18,10 @@ export interface BuilderOptions {
   bundleUsage?: BundleUsage;
   /** první <done> po změnách souborů vyvolá revizi (svazek změněných souborů), finální je <done reviewed="true"> */
   reviewBeforeDone?: boolean;
+  /** "full" = k úvodnímu promptu (a k novému kontextu) přiložit svazek s celou codebase */
+  initialBundle?: "off" | "full";
+  /** limit velikosti úvodního svazku ve znacích */
+  initialBundleMaxChars?: number;
 }
 
 /** Stupně používání hromadných txt svazků (<bundle>). */
@@ -42,6 +46,8 @@ export interface ProjectContext {
   skills?: { name: string; description: string }[];
   /** obsah souborů, na které uživatel odkázal přes #soubor (blok už hotový) */
   refs?: string;
+  /** svazek s celou codebase přiložený k tomuto promptu (whisper.bundle.initial = full) */
+  initialBundle?: { file: string; files: number; chars: number; skipped: number };
   /** co už je nakonfigurované (pro návrhy, aby se neopakovaly) */
   existing?: {
     hooks?: string[];
@@ -434,6 +440,19 @@ export function buildPreamble(ctx: ProjectContext, opts: BuilderOptions): string
 
 export function buildContext(ctx: ProjectContext): string {
   const parts: string[] = ["## Project tree", "", ctx.tree.trim(), ""];
+  if (ctx.initialBundle) {
+    const b = ctx.initialBundle;
+    parts.push(
+      "## Attached: complete codebase bundle",
+      "",
+      `The file ${b.file} attached to this message holds the complete codebase: ${b.files} files with numbered lines` +
+        ` (${b.chars} chars${b.skipped ? `; ${b.skipped} files skipped as binary or too large, listed in its header` : ""}).`,
+      "Read it instead of requesting files with <read> or <bundle>: request only what it lacks, or a file after you",
+      "changed it. If you cannot see the attachment, ask the user to paste it from the clipboard history (Win+V) or",
+      `to attach ${b.file}.`,
+      "",
+    );
+  }
   if (ctx.active) {
     parts.push(`## Active editor: ${ctx.active.path}${ctx.active.selectionRange ? ` (selection ${ctx.active.selectionRange})` : ""}`);
     if (ctx.active.selection) parts.push("", ctx.active.selection, "");

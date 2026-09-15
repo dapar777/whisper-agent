@@ -45,6 +45,8 @@ async function main(): Promise<void> {
     treeMaxEntries: 200,
     // stupeň pobízení k <bundle>: --bundle=prefer apod. (výchozí jako v extensionu)
     bundleUsage: (rest.find((r) => r.startsWith("--bundle="))?.split("=")[1] as BundleUsage) ?? "encourage",
+    // --full-bundle: celá codebase jako příloha úvodního promptu (whisper.bundle.initial = full)
+    initialBundle: rest.includes("--full-bundle") ? "full" : "off",
   });
 
   const load = async (): Promise<SessionData> => JSON.parse(await host.readFile(STATE)) as SessionData;
@@ -78,8 +80,12 @@ async function main(): Promise<void> {
         /* první sezení */
       }
       await engine.archivePlan(previous);
-      const prompt = await engine.initialPrompt(s, await engine.gatherContext(undefined, skills.map((k) => ({ name: k.name, description: k.description }))));
+      const ctx = await engine.gatherContext(undefined, skills.map((k) => ({ name: k.name, description: k.description })));
+      const attachments = await engine.attachInitialBundle(s, ctx, s.turn);
+      const prompt = await engine.initialPrompt(s, ctx);
+      s.pendingAttachments = attachments;
       await emit(s, prompt);
+      if (attachments.length) console.log(`📎 attachments for this prompt: ${attachments.join(", ")}`);
       await transcript.append({ session: s.id, kind: "task", text: task, data: { planMode: s.planMode } });
       await appendLog(`START ${s.id}: ${task}`);
       return;

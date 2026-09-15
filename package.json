@@ -89,6 +89,18 @@
           ],
           "description": "Jak předat svazek souborů (<bundle>) do chatu. Svazek je vždy soubor *.txt v .whisper/out/ (v názvu i hlavičce má čas vzniku)."
         },
+        "whisper.bundle.initial": {
+          "type": "string", "enum": ["off", "full"], "default": "off",
+          "enumDescriptions": [
+            "Model si soubory vyžádá sám (<read>, <bundle>).",
+            "K úvodnímu promptu (a k „Poslat celý kontext znovu“) se rovnou přiloží svazek s celou codebase (číslované řádky, bez binárních a obřích souborů); doručí se podle whisper.bundle.delivery."
+          ],
+          "description": "Full bundle: přiložit celou codebase už k úvodnímu promptu, aby model nemusel soubory vyžadovat po kolech."
+        },
+        "whisper.bundle.initialMaxChars": {
+          "type": "number", "default": 400000,
+          "description": "Limit velikosti úvodního svazku celé codebase ve znacích; co se nevejde, svazek vypíše jako přeskočené."
+        },
         "whisper.bundle.python": {
           "type": "string", "default": "python",
           "description": "Python pro tažení příloh z klávesnice (scripts/dragdrop.py, potřebuje pywin32). Když není v PATH, zkusí se spouštěč „py -3“."

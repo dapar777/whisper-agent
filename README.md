@@ -138,6 +138,12 @@ v názvu (`bundle-<kolo>-<n>-<yymmdd-HHMM>.txt`) i v první řádce má čas vzn
 její stáří a starý soubor označí. Prompt modelu říká, že svazek je přiložen, a co dělat, když ho nevidí.
 Přílohy z kola, ve kterém se model zároveň zeptal (`<ask>`), jdou s odpovědí na otázku.
 
+**Full bundle** (`whisper.bundle.initial` = `full`, výchozí `off`): celá codebase se přiloží už k úvodnímu
+promptu (a k „Poslat celý kontext znovu“) jako jeden svazek s číslovanými řádky, bez binárních a obřích
+souborů; limit dává `whisper.bundle.initialMaxChars` (400 000 znaků), co se nevejde, svazek vypíše jako
+přeskočené. Prompt modelu řekne, že má číst přílohu místo vyžadování souborů po kolech; doručení se řídí
+`whisper.bundle.delivery` (historie schránky, soubor, nebo tažení z klávesnice).
+
 Jak silně se model k svazkům pobízí, řídí `whisper.bundle.usage`. Ke každému stupni patří jiný text
 vložený do pravidel v promptu:
 

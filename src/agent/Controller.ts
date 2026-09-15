@@ -252,8 +252,10 @@ export class Controller implements vscode.Disposable {
     await this.transcript?.append({ session: s.id, kind: "task", text: task, data: { planMode } });
     const ctx = await engine.gatherContext(this.activeEditor(), this.skills.map((k) => ({ name: k.name, description: k.description })));
     ctx.refs = renderRefs(await resolveRefs(engine.hostRef(), original ?? task, this.activeEditor()));
+    // whisper.bundle.initial = full: celá codebase jako příloha úvodního promptu
+    const attachments = await engine.attachInitialBundle(s, ctx, s.turn);
     const prompt = await engine.initialPrompt(s, ctx);
-    void this.loop(prompt);
+    void this.loop(prompt, false, attachments);
   }
 
   /** /suggest: požádá model o návrhy skillů, hooků, povolení a úkolů z celého průběhu v .whisper. */
@@ -490,9 +492,11 @@ export class Controller implements vscode.Disposable {
     this.cancelWait();
     const engine = this.engine ?? this.newEngine();
     const ctx = await engine.gatherContext(this.activeEditor(), this.skills.map((k) => ({ name: k.name, description: k.description })));
+    // nový chat: s celou codebase znovu, pokud je to nastavené (soubory se mezitím mohly změnit)
+    const attachments = await engine.attachInitialBundle(s, ctx, s.turn);
     const prompt = await engine.resumePrompt(s, ctx);
     this.pushItem({ kind: "status", text: "Kontext znovu odeslán (nový chat)." });
-    void this.loop(prompt);
+    void this.loop(prompt, false, attachments);
   }
 
   async undoTurn(): Promise<void> {
@@ -715,6 +719,8 @@ export class Controller implements vscode.Disposable {
         directDialog: cfg("ask.direct", true),
         bundleUsage: cfg<BundleUsage>("bundle.usage", "encourage"),
         reviewBeforeDone: cfg("review.beforeDone", true),
+        initialBundle: cfg<"off" | "full">("bundle.initial", "off"),
+        initialBundleMaxChars: cfg("bundle.initialMaxChars", 400000),
       },
       listener,
     ) as TurnEngine & { hostRef(): VsCodeHost };
