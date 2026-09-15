@@ -12,6 +12,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const session = new Session();
   const review = new ReviewManager();
   const clipboard = new ClipboardBridge();
+  clipboard.scriptsDir = vscode.Uri.joinPath(context.extensionUri, "scripts").fsPath;
   const checkpoint = new Checkpoint();
   const approvals = new ApprovalService();
   const controller = new Controller(session, review, clipboard, checkpoint, approvals);
@@ -97,6 +98,7 @@ export function activate(context: vscode.ExtensionContext): void {
       controller.submitReply(text);
     }),
     cmd("whisper.copyPromptAgain", () => controller.copyPromptAgain()),
+    cmd("whisper.dragAttachments", () => controller.dragAttachments()),
     cmd("whisper.showPrompt", () => controller.showPrompt()),
     cmd("whisper.showTranscript", () => controller.showTranscript()),
     cmd("whisper.resendContext", () => controller.resendContext()),

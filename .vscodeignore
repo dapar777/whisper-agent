@@ -1,6 +1,7 @@
 **
 !dist/extension.js
 !skills/**
+!scripts/dragdrop.py
 !media/**
 !package.json
 !README.md

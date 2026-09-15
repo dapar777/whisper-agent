@@ -99,15 +99,21 @@ export async function toolBundle(host: Host, attrs: Record<string, string>, turn
     return { tool: "bundle", attrs, status: "error", output: `No readable files matched.${skipped.length ? "\nSkipped: " + skipped.join(", ") : ""}` };
   }
 
+  // jméno i hlavička nesou čas vzniku: v historii schránky i ve složce .whisper/out je jinak starý
+  // svazek (stejné kolo v dřívější úloze) k nerozeznání od nového
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${String(now.getFullYear()).slice(2)}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+  const created = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
   const out: string[] = [];
-  out.push(`${BUNDLE_MARKER}: ${picked.length} files, project "${host.workspaceName}", turn ${turn}`);
+  out.push(`${BUNDLE_MARKER}: ${picked.length} files, project "${host.workspaceName}", turn ${turn}, created ${created}`);
   out.push("# Each file: '===== FILE: <path> (<n> lines) =====', numbered lines 'N| text', '===== END FILE ====='.");
   out.push("# Contents:");
   for (const f of picked) out.push(`#   ${f.path} (${f.lines} lines)`);
   out.push("");
   for (const f of picked) out.push(f.text, "");
   const content = out.join("\n");
-  const rel = `.whisper/out/bundle-${turn}-${index}.txt`;
+  const rel = `.whisper/out/bundle-${turn}-${index}-${stamp}.txt`;
   await host.writeFile(rel, content);
 
   const summary = [

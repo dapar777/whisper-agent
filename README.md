@@ -112,8 +112,16 @@ globy nebo celou codebase (`<bundle all="true"/>`) jako jeden strukturovaný tex
 schránky se dá podle `whisper.bundle.delivery`: `history` (výchozí) = **nejdřív jako text** a pak
 teprve prompt, `Ctrl+V` vloží prompt a svazek vezmete z historie schránky (`Win+V`); `file` = do
 schránky jdou soubory `prompt-N.txt` + `bundle-N.txt` a jedno `Ctrl+V` v chatu připojí obě přílohy.
-Svazek je vždy soubor `*.txt` (jiné formáty chaty často odmítají). Prompt modelu říká, že svazek je
-přiložen, a co dělat, když ho nevidí.
+`drag` (jen Windows) = prompt jde do schránky jako text a soubor svazku (i screenshot) se hned začne
+**táhnout z klávesnice**: `Alt+Tab` do chatu (kurzor skočí do jeho okna), šipky posunou, `Enter` pustí,
+`Esc` zruší, pak `Ctrl+V` vloží prompt. Tažení dělá `scripts/dragdrop.py` (Python s pywin32,
+`pip install pywin32`; interpret nastavíte v `whisper.bundle.python`), stejný mechanismus jako
+klávesový drag & drop v mortalmanageru; před startem odlepí zaseknutý Esc/Enter, jinak by drag skončil
+hned. Tlačítko „Táhnout přílohu do chatu“ v panelu (nebo příkaz Whisper: Přetáhnout přílohu) to spustí
+znovu, v kterémkoli režimu doručení. Svazek je vždy soubor `*.txt` (jiné formáty chaty často odmítají);
+v názvu (`bundle-<kolo>-<n>-<yymmdd-HHMM>.txt`) i v první řádce má čas vzniku, panel u přílohy ukazuje
+její stáří a starý soubor označí. Prompt modelu říká, že svazek je přiložen, a co dělat, když ho nevidí.
+Přílohy z kola, ve kterém se model zároveň zeptal (`<ask>`), jdou s odpovědí na otázku.
 
 Jak silně se model k svazkům pobízí, řídí `whisper.bundle.usage`. Ke každému stupni patří jiný text
 vložený do pravidel v promptu:

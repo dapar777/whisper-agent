@@ -444,9 +444,18 @@ export class Controller implements vscode.Disposable {
     if (!s || s.state !== "awaitingUser" || !this.engine) return;
     this.pushItem({ kind: "answer", text: answer });
     await this.transcript?.append({ session: s.id, kind: "answer", text: answer });
+    // přílohy z kola s <ask> (svazek, screenshot) modelu ještě nedošly: jdou s odpovědí
+    const attachments = this.engine.undeliveredAttachments(s);
     const prompt = await this.engine.answerPrompt(s, answer + (await this.refsBlock(answer)), this.drainNotes());
     this.session.update({ pendingQuestion: undefined, pendingOptions: undefined, pendingMulti: undefined });
-    void this.loop(prompt);
+    void this.loop(prompt, false, attachments);
+  }
+
+  /** Přetáhne přílohy čekajícího promptu (svazky, obrázky) do chatu z klávesnice (Alt+Tab, Enter). */
+  async dragAttachments(): Promise<void> {
+    const rels = this.session.current?.pendingAttachments ?? [];
+    if (!rels.length) return void vscode.window.setStatusBarMessage("Whisper: aktuální prompt nemá žádnou přílohu.", 4000);
+    await this.clipboard.dragFiles(rels.map((r) => vscode.Uri.joinPath(workspaceRoot(), r).fsPath));
   }
 
   submitReply(text: string): void {
@@ -747,17 +756,21 @@ export class Controller implements vscode.Disposable {
     }
   }
 
-  /** Přílohy čekajícího promptu (název + velikost), aby je bylo v panelu vidět. */
-  attachmentInfo(): { name: string; path: string; chars: number }[] {
+  /** Přílohy čekajícího promptu (název, velikost, stáří), aby je bylo v panelu vidět. */
+  attachmentInfo(): { name: string; path: string; chars: number; ageMin?: number }[] {
     const rels = this.session.current?.pendingAttachments ?? [];
     return rels.map((rel) => {
       let chars = 0;
+      let ageMin: number | undefined;
       try {
-        chars = fs.statSync(vscode.Uri.joinPath(workspaceRoot(), rel).fsPath).size;
+        const st = fs.statSync(vscode.Uri.joinPath(workspaceRoot(), rel).fsPath);
+        chars = st.size;
+        // stáří souboru: starý svazek u nového promptu znamená, že se nový nevytvořil
+        ageMin = Math.max(0, Math.round((Date.now() - st.mtimeMs) / 60000));
       } catch {
         /* soubor mohl zmizet; velikost je jen doplňková informace */
       }
-      return { name: rel.split("/").pop() ?? rel, path: rel, chars };
+      return { name: rel.split("/").pop() ?? rel, path: rel, chars, ageMin };
     });
   }
 

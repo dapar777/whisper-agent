@@ -24,6 +24,7 @@
       { "command": "whisper.newTask", "title": "Whisper: Nový úkol" },
       { "command": "whisper.pasteReply", "title": "Whisper: Vložit odpověď ze schránky" },
       { "command": "whisper.copyPromptAgain", "title": "Whisper: Zkopírovat aktuální prompt znovu" },
+      { "command": "whisper.dragAttachments", "title": "Whisper: Přetáhnout přílohu promptu do chatu (z klávesnice)" },
       { "command": "whisper.resendContext", "title": "Whisper: Znovu poslat kontext (nový chat)" },
       { "command": "whisper.undoTurn", "title": "Whisper: Undo posledního kola" },
       { "command": "whisper.abort", "title": "Whisper: Zrušit úkol" },
@@ -80,12 +81,17 @@
           "description": "Přenos do chatu: jak silně pobízet model k hromadným txt svazkům (<bundle>) místo mnoha jednotlivých čtení. Text pokynu se podle stupně vloží do promptu."
         },
         "whisper.bundle.delivery": {
-          "type": "string", "enum": ["history", "file"], "default": "history",
+          "type": "string", "enum": ["history", "file", "drag"], "default": "history",
           "enumDescriptions": [
             "Svazek jde do schránky jako text před promptem: Ctrl+V vloží prompt, svazek se vezme z historie schránky (Win+V).",
-            "Jen Windows: do schránky se dají soubory prompt-N.txt a bundle-N.txt; jedno Ctrl+V v chatu připojí obě přílohy."
+            "Jen Windows: do schránky se dají soubory prompt-N.txt a bundle-N.txt; jedno Ctrl+V v chatu připojí obě přílohy.",
+            "Jen Windows: prompt jde do schránky jako text a soubor svazku (i screenshot) se hned začne táhnout z klávesnice: Alt+Tab do chatu, Enter pustí, Esc zruší, pak Ctrl+V vloží prompt. Vyžaduje Python s pywin32 (pip install pywin32)."
           ],
-          "description": "Jak předat svazek souborů (<bundle>) do chatu. Svazek je vždy soubor *.txt v .whisper/out/."
+          "description": "Jak předat svazek souborů (<bundle>) do chatu. Svazek je vždy soubor *.txt v .whisper/out/ (v názvu i hlavičce má čas vzniku)."
+        },
+        "whisper.bundle.python": {
+          "type": "string", "default": "python",
+          "description": "Python pro tažení příloh z klávesnice (scripts/dragdrop.py, potřebuje pywin32). Když není v PATH, zkusí se spouštěč „py -3“."
         },
         "whisper.reply.watchDir": {
           "type": "string", "default": "",

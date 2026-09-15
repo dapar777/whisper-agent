@@ -31,9 +31,14 @@ describe("toolBundle", () => {
     const r = await toolBundle(host(root), { paths: "src/**/*.ts, docs, package.json, img/logo.png" }, 3, 1);
     expect(r.status).toBe("ok");
     expect(r.meta?.files).toBe(4);
-    expect(r.attachments).toEqual([".whisper/out/bundle-3-1.txt"]);
-    const content = fs.readFileSync(path.join(root, ".whisper/out/bundle-3-1.txt"), "utf8");
+    // jméno nese čas vzniku (yymmdd-HHMM): starý svazek stejného kola z dřívější úlohy je k rozeznání
+    expect(r.attachments).toHaveLength(1);
+    const rel = r.attachments![0];
+    expect(rel).toMatch(/^\.whisper\/out\/bundle-3-1-\d{6}-\d{4}\.txt$/);
+    expect(r.meta?.file).toBe(rel);
+    const content = fs.readFileSync(path.join(root, rel), "utf8");
     expect(content.startsWith(BUNDLE_MARKER)).toBe(true);
+    expect(content.split("\n")[0]).toMatch(/turn 3, created \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
     expect(content).toContain("#   src/a.ts (3 lines)");
     expect(content).toContain("===== FILE: src/a.ts (3 lines) =====\n1| const a = 1;\n2| export default a;\n3| \n===== END FILE: src/a.ts =====");
     expect(content).toContain("===== FILE: docs/readme.md");

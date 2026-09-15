@@ -58,6 +58,8 @@ export class SidebarView implements vscode.WebviewViewProvider {
         return c.approvals.removeAllowPattern(m.text ?? "", m.approve ? "global" : "workspace");
       case "copyAgain":
         return c.copyPromptAgain();
+      case "drag":
+        return c.dragAttachments();
       case "showPrompt":
         return c.showPrompt();
       case "pasteClip":
@@ -118,6 +120,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
             suggestions: s.suggestions ?? [],
             attachments: c.attachmentInfo(),
             historyItems: c.clipboard.lastHistoryItems,
+            delivery: vscode.workspace.getConfiguration("whisper").get<string>("bundle.delivery", "history"),
           }
         : undefined,
       items: c.items.slice(-150),
@@ -416,15 +419,20 @@ export class SidebarView implements vscode.WebviewViewProvider {
         // přílohy (svazky souborů) musí být vidět, jinak uživatel neví, že má vložit i je
         $("bannerSub").innerHTML = esc(base) + (att.length
           ? '<div class="att">📎 ' + esc(att.length > 1 ? att.length + " přílohy" : "příloha") + ": " +
-            att.map((a) => '<span class="ref">' + esc(String(a.name || a)) + "</span>" + (a.chars ? ' <span class="sub">(' + kb(a.chars) + ")</span>" : "")).join(", ") +
-            (s.historyItems && s.historyItems.length
-              ? '<br><span class="sub">Vložte Ctrl+V (prompt) a pak svazek z historie schránky: <b>Win+V</b>.</span>'
-              : '<br><span class="sub">Přiloženo jako soubor ve schránce; jedno Ctrl+V vloží prompt i přílohu.</span>') + "</div>"
+            att.map((a) => '<span class="ref">' + esc(String(a.name || a)) + "</span>" +
+              (a.chars ? ' <span class="sub">(' + kb(a.chars) + (a.ageMin != null ? ", " + (a.ageMin < 1 ? "právě teď" : a.ageMin < 60 ? "před " + a.ageMin + " min" : "před " + Math.round(a.ageMin / 60) + " h") : "") + ")</span>" : "") +
+              (a.ageMin > 30 ? ' <span class="badge" title="Soubor je starší než půl hodiny: nový svazek se v tomto kole nevytvořil">⚠ starý soubor</span>' : "")).join(", ") +
+            (s.delivery === "drag"
+              ? '<br><span class="sub">Příloha se táhne z klávesnice: <b>Alt+Tab</b> do chatu (kurzor skočí do okna), <b>Enter</b> pustí, Esc zruší; pak Ctrl+V vloží prompt.</span>'
+              : s.historyItems && s.historyItems.length
+                ? '<br><span class="sub">Vložte Ctrl+V (prompt) a pak svazek z historie schránky: <b>Win+V</b>.</span>'
+                : '<br><span class="sub">Přiloženo jako soubor ve schránce; jedno Ctrl+V vloží prompt i přílohu.</span>') + "</div>"
           : "");
       } else $("bannerSub").textContent = sub;
       const b = $("bannerBtns"); b.innerHTML = "";
       if (s.state === "waitingForReply") {
-        b.innerHTML = '<button class="primary small" data-act="copyAgain">📋 Zkopírovat prompt znovu</button><button class="small" data-act="showPrompt">Zobrazit prompt</button><button class="small" data-act="pasteClip">Vzít odpověď ze schránky</button><button class="small" data-act="resend" title="Pro nový chat: preambule + shrnutí dosavadního průběhu">↻ Poslat celý kontext znovu</button><button class="ghost small" data-act="correction" title="Když model odpověděl bez bloku akcí a nebyla to otázka">Poslat opravný prompt</button>';
+        b.innerHTML = '<button class="primary small" data-act="copyAgain">📋 Zkopírovat prompt znovu</button><button class="small" data-act="showPrompt">Zobrazit prompt</button><button class="small" data-act="pasteClip">Vzít odpověď ze schránky</button><button class="small" data-act="resend" title="Pro nový chat: preambule + shrnutí dosavadního průběhu">↻ Poslat celý kontext znovu</button><button class="ghost small" data-act="correction" title="Když model odpověděl bez bloku akcí a nebyla to otázka">Poslat opravný prompt</button>' +
+          ((s.attachments || []).length ? '<button class="small" data-act="drag" title="Přetáhne přílohu do chatu z klávesnice: Alt+Tab do chatu, Enter pustí, Esc zruší (vyžaduje Python s pywin32)">🖱 Táhnout přílohu do chatu</button>' : "");
       } else if (s.state === "awaitingUser") {
         b.innerHTML = '<button class="small" data-act="focus">Odpovědět</button>';
       } else if (s.state === "executing") {

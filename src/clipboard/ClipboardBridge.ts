@@ -1,5 +1,7 @@
 import { execFile } from "child_process";
+import * as path from "path";
 import * as vscode from "vscode";
+import { dragFiles as runDrag } from "./DragDrop";
 import { isOwnPrompt, looksLikeReply, normalizeClipboard } from "../protocol/replyDetect";
 import { classifyProse } from "../protocol/PromptBuilder";
 import { cfg, readText, workspaceName, workspaceRoot, writeText } from "../util";
@@ -62,6 +64,9 @@ export class ClipboardBridge implements vscode.Disposable {
   private readonly logEmitter = new vscode.EventEmitter<string>();
   /** svazky, které se v tomto kole podařilo vložit do historie schránky (Win+V) */
   lastHistoryItems: string[] = [];
+  /** složka se skripty extensionu (dragdrop.py); nastaví extension.ts */
+  scriptsDir = "";
+  private dragging = false;
   /** hlášky pro log v panelu (sledování složky s odpověďmi) */
   readonly onDidLog = this.logEmitter.event;
 
@@ -79,7 +84,14 @@ export class ClipboardBridge implements vscode.Disposable {
     // PŘED promptem, takže Ctrl+V vloží prompt a z historie se vezme svazek; obrázky jdou jako soubory
     const textual = attachments.filter((a) => /\.(txt|md)$/i.test(a));
     const binary = attachments.filter((a) => !/\.(txt|md)$/i.test(a));
-    const delivery = cfg<"history" | "file">("bundle.delivery", "history");
+    const delivery = cfg<"history" | "file" | "drag">("bundle.delivery", "history");
+    if (delivery === "drag" && attachments.length && process.platform === "win32") {
+      // prompt jde jako text; přílohy (svazky i obrázky) se táhnou do chatu z klávesnice (dragdrop.py)
+      this.lastHistoryItems = [];
+      if (!(await this.owner.take(text))) await vscode.env.clipboard.writeText(text);
+      void this.dragFiles(attachments.map((a) => vscode.Uri.joinPath(workspaceRoot(), a).fsPath));
+      return "text";
+    }
     if (delivery === "history" && textual.length && binary.length === 0 && !(threshold > 0 && text.length > threshold)) {
       const copied: string[] = [];
       for (const a of textual) {
@@ -122,6 +134,34 @@ export class ClipboardBridge implements vscode.Disposable {
     if (await this.owner.take(finalText)) return "text";
     await vscode.env.clipboard.writeText(finalText);
     return "text";
+  }
+
+  /**
+   * Přetáhne soubory do chatu z klávesnice (scripts/dragdrop.py): uživatel Alt+Tabem přepne do chatu,
+   * Enter pustí, Esc zruší. Výsledek a případné selhání (chybí Python/pywin32) hlásí do logu panelu.
+   */
+  async dragFiles(files: string[]): Promise<void> {
+    if (!files.length) return;
+    if (this.dragging) {
+      this.logEmitter.fire("Tažení už běží: Alt+Tab do chatu, Enter pustí, Esc zruší.");
+      return;
+    }
+    this.dragging = true;
+    const names = files.map((f) => path.basename(f)).join(", ");
+    this.logEmitter.fire(`🖱 Táhnu ${names}: Alt+Tab do chatu (kurzor skočí do okna), Enter pustí, Esc zruší. Pak Ctrl+V vloží prompt.`);
+    vscode.window.setStatusBarMessage(`$(move) Whisper: táhnu ${names}: Alt+Tab do chatu, Enter pustí`, 30000);
+    try {
+      const r = await runDrag(this.scriptsDir, files, cfg<string>("bundle.python", "python"));
+      if (r.result === "copy" || r.result === "move") this.logEmitter.fire(`✓ ${names}: puštěno do okna.`);
+      else if (r.result === "none") this.logEmitter.fire(`Tažení ${names} zrušeno (Esc). Znovu tlačítkem „Táhnout přílohu do chatu“, nebo soubor přiložte ručně z .whisper/out/.`);
+      else
+        this.logEmitter.fire(
+          `Tažení se nepovedlo (${r.detail === "ENOENT" ? "python nenalezen; nastavte whisper.bundle.python" : r.detail}). ` +
+            `Vyžaduje Python s pywin32 (pip install pywin32). Přílohu přiložte ručně: ${names}.`,
+        );
+    } finally {
+      this.dragging = false;
+    }
   }
 
   /** Absolutní cesta přílohy; textový soubor bez přípony .txt se zkopíruje do .txt (chat jiné formáty nebere). */

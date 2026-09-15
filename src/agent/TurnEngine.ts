@@ -422,7 +422,14 @@ export class TurnEngine {
       session.summaries,
       this.statelessPreamble(session),
     );
-    return { kind: "next", prompt, record, attachments: outcome.results.flatMap((r) => r.attachments ?? []) };
+    // i přílohy z kola s <ask>, které modelu ještě nedošly (uživatel odpověděl v chatu)
+    return { kind: "next", prompt, record, attachments: [...carried, ...outcome.results].flatMap((r) => r.attachments ?? []) };
+  }
+
+  /** Přílohy (svazky, obrázky) z kola s <ask>, které modelu ještě nebyly doručeny. */
+  undeliveredAttachments(session: SessionData): string[] {
+    const last = session.history[session.history.length - 1];
+    return last?.undelivered ? last.results.flatMap((r) => r.attachments ?? []) : [];
   }
 
   /**

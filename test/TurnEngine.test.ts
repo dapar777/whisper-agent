@@ -24,7 +24,7 @@ describe("TurnEngine", () => {
 
   it("delivers results of actions sent together with <ask> in the answer prompt", async () => {
     const session = createSession("task", "stateful");
-    const parsed = engine.parse('<whisper turn="1">\n<read path="a.txt"/>\n<ask options="A | B|C" multi="true">Which one?</ask>\n</whisper>');
+    const parsed = engine.parse('<whisper turn="1">\n<read path="a.txt"/>\n<bundle paths="a.txt"/>\n<ask options="A | B|C" multi="true">Which one?</ask>\n</whisper>');
     const step = await engine.execute(session, parsed, 100);
     expect(step.kind).toBe("ask");
     if (step.kind === "ask") {
@@ -32,7 +32,10 @@ describe("TurnEngine", () => {
       expect(step.multi).toBe(true);
     }
     expect(session.turn).toBe(2);
+    // svazek z kola s <ask> modelu ještě nedošel: k odpovědi se přiloží
+    expect(engine.undeliveredAttachments(session)).toEqual([expect.stringMatching(/^\.whisper\/out\/bundle-1-1-\d{6}-\d{4}\.txt$/)]);
     const prompt = await engine.answerPrompt(session, "the first", []);
+    expect(engine.undeliveredAttachments(session)).toEqual([]);
     expect(prompt).toContain('<result of="read" path="a.txt" status="ok"');
     expect(prompt).toContain("1| hello");
     expect(prompt).toContain("<user>Answer to your question: the first</user>");
