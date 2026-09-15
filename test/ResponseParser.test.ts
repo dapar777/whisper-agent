@@ -103,3 +103,48 @@ export const y = \`tpl \${x}\`;
     expect(p.actions[0].tool).toBe("done");
   });
 });
+
+describe("CDATA wrappers", () => {
+  it("removes <![CDATA[ … ]]> around bodies (joined sections too) and tells the model", () => {
+    const reply =
+      '<whisper turn="1">\n<status><![CDATA[Jdu na to]]></status>\n' +
+      '<write path="docs/a.md"><![CDATA[\n# A\n\ntext with ]]]]><![CDATA[> inside\n]]></write>\n' +
+      "<done><![CDATA[Hotovo.]]></done>\n</whisper>";
+    const p = parseReply(reply, 1);
+    expect(p.errors).toEqual([]);
+    expect(p.actions.map((a) => a.body)).toEqual(["Jdu na to", "# A\n\ntext with ]]> inside", "Hotovo."]);
+    expect(p.notes).toHaveLength(3);
+    expect(p.notes[1]).toMatch(/<write path="docs\/a.md">: the body was wrapped in <!\[CDATA\[/);
+  });
+
+  it("leaves a body alone when CDATA appears only inside it", () => {
+    const p = parseReply('<whisper turn="1">\n<write path="x.xml">\n<a><![CDATA[1]]></a>\n</write>\n</whisper>', 1);
+    expect(p.actions[0].body).toBe("<a><![CDATA[1]]></a>");
+    expect(p.notes).toEqual([]);
+  });
+
+  it("decodes HTML-escaped hunk markers in <edit> bodies", () => {
+    const p = parseReply('<whisper turn="1">\n<edit path="a.ts">\n&lt;&lt;&lt;&lt;&lt;&lt;&lt; SEARCH\nx\n=======\ny\n&gt;&gt;&gt;&gt;&gt;&gt;&gt; REPLACE\n</edit>\n</whisper>', 1);
+    expect(p.actions[0].body).toBe("<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE");
+  });
+});
+
+describe("HTML entities in bodies", () => {
+  it("decodes a body that has entities but no raw < or > (the model escaped everything)", () => {
+    const p = parseReply('<whisper turn="1">\n<write path="a.md">\n# T\n\nuse `a &gt; b` and &lt;br&gt; &amp; done\n</write>\n<status>x &gt; y</status>\n</whisper>', 1);
+    expect(p.actions[0].body).toBe("# T\n\nuse `a > b` and <br> & done");
+    expect(p.actions[1].body).toBe("x > y");
+    expect(p.notes[0]).toMatch(/<write path="a.md">: the body was HTML-escaped/);
+  });
+
+  it("keeps entities in a body that also has raw tags (real HTML)", () => {
+    const p = parseReply('<whisper turn="1">\n<write path="a.html">\n<p>&lt;b&gt; &amp; x</p>\n</write>\n</whisper>', 1);
+    expect(p.actions[0].body).toBe("<p>&lt;b&gt; &amp; x</p>");
+    expect(p.notes).toEqual([]);
+  });
+
+  it("decodes a command that was escaped (redirection)", () => {
+    const p = parseReply('<whisper turn="1">\n<run>echo a &gt; out.txt &amp;&amp; type out.txt</run>\n</whisper>', 1);
+    expect(p.actions[0].body).toBe("echo a > out.txt && type out.txt");
+  });
+});

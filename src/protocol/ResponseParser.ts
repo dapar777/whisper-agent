@@ -250,6 +250,24 @@ function validate(action: Action, out: Scan): boolean {
     out.errors.push(`<${action.tool}> has an empty body.`);
     ok = false;
   }
+  if (action.body && BODY_TOOLS.has(action.tool)) {
+    const bare = stripCdata(action.body);
+    if (bare !== null) {
+      action.body = bare;
+      const where = action.attrs.path ? ` path="${action.attrs.path}"` : "";
+      out.notes.push(`<${action.tool}${where}>: the body was wrapped in <![CDATA[ … ]]>; the wrapper was removed. Bodies are verbatim text, never CDATA.`);
+    }
+  }
+  if (action.body && BODY_TOOLS.has(action.tool)) {
+    const textual = TEXT_TOOLS.has(action.tool);
+    const decoded = decodeEntitiesIfConsistent(action.body, textual);
+    if (decoded !== null) {
+      action.body = decoded;
+      const where = action.attrs.path ? ` path="${action.attrs.path}"` : "";
+      if (!textual || !out.notes.some((n) => n.includes("HTML-escaped")))
+        out.notes.push(`<${action.tool}${where}>: the body was HTML-escaped (&lt; &gt; &amp;); the tool decoded it. Write <, > and & as plain characters, bodies are verbatim.`);
+    }
+  }
   if (action.tool === "write" && action.body) {
     const unfenced = stripBodyFence(action.body);
     if (unfenced !== null) {
@@ -258,5 +276,30 @@ function validate(action: Action, out: Scan): boolean {
     }
     action.body = decodeHunkMarkers(action.body);
   }
+  if (action.tool === "edit" && action.body) action.body = decodeHunkMarkers(action.body);
   return ok;
+}
+
+/** Akce, jejichž tělo je text pro uživatele nebo agenta, ne obsah souboru či příkaz. */
+const TEXT_TOOLS = new Set(["status", "done", "ask", "dialog", "plan", "suggest"]);
+
+/**
+ * Model občas escapuje < > & jako HTML entity v celém těle (protokol vypadá jako XML). U souborů
+ * a příkazů se dekóduje jen tělo bez jediného syrového < nebo >: tam je to escapování, ne obsah
+ * (skutečné HTML s entitami má i syrové značky). Texty pro uživatele se dekódují vždy.
+ */
+function decodeEntitiesIfConsistent(body: string, always: boolean): string | null {
+  if (!/&(lt|gt|amp|quot|#39);/.test(body)) return null;
+  if (!always && /[<>]/.test(body)) return null;
+  return body.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+}
+
+/**
+ * Model občas tělo zabalí do <![CDATA[ … ]]>, protože protokol vypadá jako XML; obal do souboru
+ * ani do textu pro uživatele nepatří. Obsah s „]]>“ bývá rozdělený do více sekcí, ty se spojí.
+ */
+function stripCdata(body: string): string | null {
+  const t = body.trim();
+  if (!t.startsWith("<![CDATA[") || !t.endsWith("]]>")) return null;
+  return trimBody(t.slice("<![CDATA[".length, -"]]>".length).replace(/\]\]><!\[CDATA\[/g, ""));
 }

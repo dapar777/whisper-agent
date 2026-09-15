@@ -65,7 +65,7 @@ export const TOOLS: ToolDef[] = [
       { name: "path", required: true, doc: "workspace-relative path; parent dirs are created" },
       { name: "end", required: false, doc: 'optional end marker on its own line (e.g. end="EOF_7q") when you want to be extra safe; normally NOT needed even if the body contains </write>, code fences or <whisper> examples' },
     ],
-    bodyDoc: "the complete new file content, verbatim: no HTML escaping, no outer code fence; the body may contain anything, including code fences, SEARCH markers, </write> or <whisper> examples",
+    bodyDoc: "the complete new file content, verbatim: no HTML escaping, no <![CDATA[ ]]>, no outer code fence; the body may contain anything, including code fences, SEARCH markers, </write> or <whisper> examples",
     doc: "Create or fully overwrite a file. Prefer <edit> for existing files.",
     example:
       '<write path="src/utils/email.ts">\nexport function isValidEmail(v: string) {\n  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(v);\n}\n</write>',
