@@ -9,6 +9,7 @@ import { toolGlob, toolLs, toolRead } from "./fs";
 import { toolGrep } from "./grep";
 import { toolRun } from "./run";
 import { toolBundle } from "./bundle";
+import { checkWrittenFile, renderIssues } from "./check";
 import { takeScreenshot } from "./screenshot";
 
 /** Napojení na review změn (ve VS Code); headless běh ho nepotřebuje. */
@@ -104,9 +105,9 @@ export class ToolRunner {
         case "diagnostics":
           return await toolDiagnostics(this.host, a.attrs);
         case "write":
-          return await this.write(a, turn, outcome);
+          return await this.checked(await this.write(a, turn, outcome));
         case "edit":
-          return await this.edit(a, turn, outcome);
+          return await this.checked(await this.edit(a, turn, outcome));
         case "delete":
           return await this.delete(a, turn, outcome);
         case "run":
@@ -158,6 +159,25 @@ export class ToolRunner {
 
   private async approve(path: string, before: string, after: string): Promise<boolean> {
     return this.listener?.approve ? this.listener.approve(path, before, after) : true;
+  }
+
+  /**
+   * Po zápisu nebo editaci soubor zkontroluje (zbytky protokolu jako CDATA, entity, značky hunků;
+   * syntaxe, kde jde ověřit). Neplatný soubor = neúspěšná akce: model dostane, co je špatně, a <done>
+   * neprojde, dokud to neopraví.
+   */
+  private async checked(r: ActionResult): Promise<ActionResult> {
+    if (r.status !== "ok" || !r.attrs.path) return r;
+    const issues = await checkWrittenFile(this.host, r.attrs.path);
+    if (!issues.length) return r;
+    const bad = issues.some((i) => i.severity === "error");
+    this.host.log(`${bad ? "✗" : "⚠"} kontrola ${r.attrs.path}: ${issues.map((i) => i.message).join("; ")}`);
+    return {
+      ...r,
+      status: bad ? "error" : r.status,
+      output: [r.output, renderIssues(r.attrs.path, issues)].filter(Boolean).join("\n"),
+      meta: { ...r.meta, [bad ? "invalid" : "warning"]: "true" },
+    };
   }
 
   private markChanged(outcome: RunOutcome, path: string): void {

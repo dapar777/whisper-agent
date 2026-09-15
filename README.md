@@ -86,7 +86,12 @@ napsat návrh nebo jiný text místo kódu. Parser proto hledá skutečný blok 
 „blok `<whisper>`“ ve shrnutí také ne, celý blok zabalený do ``` ohrazení se rozbalí, obal
 `<![CDATA[ … ]]>` kolem těla akce se odstraní (do souboru ani do textu pro vás nepatří) a HTML
 entity u značek hunků i escapované značky protokolu se dekódují; escapované tělo akce (`&lt;`, `&gt;`,
-`&amp;` bez jediného syrového `<`/`>`) se rozkóduje také, skutečné HTML s entitami zůstane. Useknutá akce (chybí uzavírací tag) se nikdy nevykoná, jen se
+`&amp;` bez jediného syrového `<`/`>`) se rozkóduje také, skutečné HTML s entitami zůstane.
+Po každém `<write>` a `<edit>` agent soubor **zkontroluje**: zbytky protokolu (CDATA, značky
+`<whisper>`/`<write>`, značky hunků, ohrazení kolem celého souboru, escapovaný obsah) a syntaxi tam, kde
+jde ověřit (JSON, Python přes interpret, JavaScript přes `node --check`, TypeScript přes `typescript`
+z `node_modules` projektu). Neplatný soubor je neúspěšná akce: model dostane, co je špatně, a `<done>`
+neprojde, dokud to neopraví. Useknutá akce (chybí uzavírací tag) se nikdy nevykoná, jen se
 ohlásí. Když model napíše dokument rovnou do chatu bez bloku, agent ho převezme ze schránky,
 a pokud ze zadání nebo z rozepsaného `<write path>` zná cílovou cestu a soubor ještě neexistuje,
 zapíše ho sám (jako běžnou změnu ke schválení) a modelu to oznámí; totéž udělá, když blok

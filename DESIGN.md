@@ -225,6 +225,9 @@ napíše dokument rovnou do chatu, zabalí blok do ``` ohrazení, zapomene uzav�
 - blok **jen s poznámkou** (`<status>`, `<plan>`, `<done>`) vedle dokumentu napsaného do chatu bere
   stejně: dokument zachrání do souboru (případné `<done>` vynechá, aby model soubor zkontroloval),
   nebo u existujícího dokumentu pošle opravu po sekcích místo tichého zahození textu;
+- po každém zápisu **soubor zkontroluje** (`tools/check.ts`): zbytky protokolu (CDATA, značky, hunky,
+  ohrazení, escapovaný obsah) ve všech souborech, syntaxi u JSON, Pythonu, JavaScriptu a TypeScriptu;
+  neplatný soubor je neúspěšná akce, takže `<done>` v témže bloku neprojde a model musí opravit;
 - **dutý `<write>`** („text zkopíruj z nadpisu výše“) vedle dokumentu v chatu naplní dokumentem z chatu;
   značky protokolu **HTML-escapované** jako `&lt;whisper&gt;` dekóduje a zkusí parsovat znovu (model se
   to dozví v `<note>`); ohrazení kolem bloku uprostřed odpovědi ignoruje;

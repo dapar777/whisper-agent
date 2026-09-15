@@ -245,7 +245,10 @@ export function buildRules(opts: BuilderOptions): string {
       'document, read it (or take a <bundle>), then replace whole sections with <edit path="…" section="## Heading">\n' +
       "or change sentences with small SEARCH/REPLACE hunks; retype the whole document only for a full rewrite.",
     "After changing code, verify it in the same turn when possible: add <run> for tests/build and\n" +
-      "<diagnostics/> at the end. Fix errors reported back to you. Keep command output small (no verbose\n" +
+      "<diagnostics/> at the end. Fix errors reported back to you. LEAVE EVERY FILE VALID: the tool checks each\n" +
+      "file you write or edit for syntax errors and for protocol residue (CDATA, &lt; entities, SEARCH markers,\n" +
+      "fences, stray tags) and reports problems in the result; such a file counts as a failed action, so <done>\n" +
+      "is refused until you fix it with small <edit> hunks. Keep command output small (no verbose\n" +
       "flags); long outputs are truncated. To verify a GUI app visually, start it with <run probe=\"N\" capture=\"M\">\n" +
       "(or use <screenshot/> while it runs): the screenshot is attached as an image to the next prompt.",
     "Do not repeat unchanged file content. Do not explain the protocol back. Do not include the\n<whisper-results> block in your reply.",
