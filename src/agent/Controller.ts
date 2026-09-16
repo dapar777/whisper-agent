@@ -103,6 +103,8 @@ export class Controller implements vscode.Disposable {
       if (this.promptPhase === "fresh") this.setPromptPhase("sent");
     });
     clipboard.onDidLog((l) => this.logLine(l));
+    // tažení přílohy a selhání doručení: uživatel to má vidět v proudu, ne jen ve výstupním kanálu
+    clipboard.onDidNotify((n) => this.pushItem({ kind: "info", turn: this.session.current?.turn, text: n.text, data: { icon: n.icon } }));
     this.reloadSkills();
   }
 
@@ -677,8 +679,8 @@ export class Controller implements vscode.Disposable {
             continue;
           case "next":
             if (step.review) {
-              const line = `🔍 Revize ${step.review.round}: model poslal done, posílám mu celé znění ${step.review.files.length} změněných souborů a ptám se, zda je hotovo vše. Finální je až done reviewed="true".`;
-              this.pushItem({ kind: "status", turn: s.turn, text: line });
+              const line = `Revize ${step.review.round}: model poslal done, posílám mu celé znění ${step.review.files.length} změněných souborů a ptám se, zda je hotovo vše. Finální je až done reviewed="true".`;
+              this.pushItem({ kind: "info", turn: s.turn, text: line, data: { icon: "search" } });
               await this.transcript?.append({ session: s.id, kind: "status", turn: s.turn, text: line });
             }
             prompt = step.prompt;

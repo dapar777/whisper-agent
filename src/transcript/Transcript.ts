@@ -20,7 +20,8 @@ export interface TranscriptEvent {
     | "suggestion"
     | "done"
     | "error"
-    | "undo";
+    | "undo"
+    | "info";
   turn?: number;
   text?: string;
   data?: unknown;

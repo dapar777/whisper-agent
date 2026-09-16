@@ -255,8 +255,9 @@ export class SidebarView implements vscode.WebviewViewProvider {
   pre { margin: 6px 0 0; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; background: var(--vscode-textCodeBlock-background, rgba(128,128,128,.12)); padding: 6px 8px; border-radius: 6px; }
 
   /* horní lišta */
-  .topbar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-wrap: nowrap; overflow: hidden; }
+  .topbar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); flex-wrap: wrap; row-gap: 4px; }
   .topbar .pill { flex: 0 0 auto; }
+  .topbar .menu { display: flex; gap: 2px; flex: 0 0 auto; margin-left: auto; }
   .topbar .spacer { min-width: 4px; }
   @media (max-width: 380px) { .logo span:last-child { display: none; } }
   .logo { display: flex; align-items: center; gap: 6px; font-weight: 600; letter-spacing: .2px; }
@@ -268,6 +269,13 @@ export class SidebarView implements vscode.WebviewViewProvider {
   .pill.busy.ok { color: var(--ok, #3c9); border-color: var(--ok, #3c9); }
   .pill.busy.err { color: var(--error, #e55); border-color: var(--error, #e55); }
   button.busy { opacity: 0.6; cursor: progress; }
+  /* ikony: inline SVG, tenká linka, barva podle textu (jako codicons ve VS Code) */
+  .ic { width: 14px; height: 14px; vertical-align: -2px; flex: 0 0 auto; }
+  .topbar .ghost .ic, .slashbtn .ic, #send .ic { width: 15px; height: 15px; }
+  .head .ic { width: 13px; height: 13px; margin-right: 5px; opacity: 0.85; }
+  .line .ic, .att .ic, .chip .ic { width: 12px; height: 12px; margin-right: 3px; }
+  .ic.spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   /* stavový banner: plave na konci proudu, ne nad ním */
   .banner { margin: 2px 0 4px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; gap: 4px; }
@@ -314,6 +322,9 @@ export class SidebarView implements vscode.WebviewViewProvider {
   .msg.approval { border: 1px solid var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--card)); }
   .line { color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 6px; padding: 0 4px; min-width: 0; flex-wrap: wrap; }
   .line .btns { margin-left: auto; display: flex; gap: 4px; }
+  .line .txt { flex: 1 1 auto; min-width: 0; }
+  .topbar .pill.busy { flex: 0 1 auto; min-width: 0; }
+  .hint button { white-space: nowrap; }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
   .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chip { font-family: var(--mono); font-size: 11px; padding: 1px 6px; border-radius: 5px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
@@ -383,13 +394,11 @@ export class SidebarView implements vscode.WebviewViewProvider {
     <button id="modeBtn" class="pill" title="Schvalování příkazů mimo allowlist">ptát se</button>
     <button id="bundlePill" class="pill" title="Doručení svazků (bundle) a příloh do chatu; kliknutím zapnete/vypnete automatické tažení z klávesnice">📎</button>
     <span id="busy" class="pill busy" hidden></span>
-    <button id="menuSuggest" class="ghost small" title="Navrhnout skilly, hooky a úkoly z průběhu">💡</button>
-    <button id="menuTranscript" class="ghost small" title="Otevřít záznam průběhu (.whisper/transcript.jsonl)">🗒</button>
-    <button id="menuSettings" class="ghost small" title="Otevřít nastavení Whisperu">⚙</button>
+    <span class="menu"><button id="menuSuggest" class="ghost small" title="Navrhnout skilly, hooky a úkoly z průběhu" data-ic="lightbulb"></button><button id="menuTranscript" class="ghost small" title="Otevřít záznam průběhu (.whisper/transcript.jsonl)" data-ic="file-text"></button><button id="menuSettings" class="ghost small" title="Otevřít nastavení Whisperu" data-ic="settings"></button></span>
   </div>
 
   <div id="exceptions" class="sheet" hidden>
-    <div class="title">Schvalování příkazů<span class="spacer"></span><button id="exClose" class="ghost small" title="Zavřít">✕</button></div>
+    <div class="title">Schvalování příkazů<span class="spacer"></span><button id="exClose" class="ghost small" title="Zavřít" data-ic="x"></button></div>
     <div class="btns"><button id="modeAsk" class="small">ptát se</button><button id="modeAuto" class="small">auto (bez dotazů)</button><span class="sub">zakázané příkazy platí vždy</span></div>
     <details id="exDetails">
       <summary class="sub">Výjimky: příkazy povolené regulárním výrazem <span id="exCount"></span></summary>
@@ -414,15 +423,15 @@ export class SidebarView implements vscode.WebviewViewProvider {
 
   <div id="composer" class="composer">
     <div id="popup" class="popup" hidden></div>
-    <div id="askHint" class="askhint" hidden><b>❓ Odpověď pro model:</b><span id="askText" class="q"></span></div>
+    <div id="askHint" class="askhint" hidden><b><span data-ic="help-circle"></span> Odpověď pro model:</b><span id="askText" class="q"></span></div>
     <div id="askOptions" class="btns" hidden></div>
-    <div id="refbar" class="refbar" hidden><span class="sub">Kontext:</span><button id="refFile" class="small ghost" title="Přidat odkaz na soubor otevřený v editoru">＋ soubor</button><button id="refSel" class="small ghost" hidden title="Přidat odkaz na výběr v editoru">＋ výběr</button><span id="refHint" class="sub"></span></div>
+    <div id="refbar" class="refbar" hidden><span class="sub">Kontext:</span><button id="refFile" class="small ghost" title="Přidat odkaz na soubor otevřený v editoru" data-ic="plus" data-label="soubor"></button><button id="refSel" class="small ghost" hidden title="Přidat odkaz na výběr v editoru" data-ic="plus" data-label="výběr"></button><span id="refHint" class="sub"></span></div>
     <div class="box">
       <button id="slash" class="slashbtn" title="Příkazy a skilly">/</button>
       <textarea id="input" rows="2" placeholder="Zadejte úkol… (/ pro příkazy, Enter odešle, Shift+Enter nový řádek)"></textarea>
-      <button id="send" class="primary" title="Odeslat (Enter)">➤</button>
+      <button id="send" class="primary" title="Odeslat (Enter)" data-ic="send"></button>
     </div>
-    <div class="hint"><span id="hint"></span><span class="spacer"></span><button id="stopBtn" class="ghost small" hidden>■ zrušit</button><button id="undoBtn" class="ghost small" hidden>↶ undo</button><button id="resendBtn" class="ghost small" hidden title="Znovu poslat celý kontext (pro nový chat)">↻ celý kontext znovu</button></div>
+    <div class="hint"><span id="hint"></span><span class="spacer"></span><button id="stopBtn" class="ghost small" hidden data-ic="square" data-label="zrušit"></button><button id="undoBtn" class="ghost small" hidden data-ic="undo" data-label="undo"></button><button id="resendBtn" class="ghost small" hidden title="Znovu poslat celý kontext (pro nový chat)" data-ic="refresh" data-label="kontext znovu"></button></div>
   </div>
 
   <details class="log"><summary>Log</summary><pre id="log"></pre></details>
@@ -438,8 +447,8 @@ export class SidebarView implements vscode.WebviewViewProvider {
   let lastClicked = null;
   let lastClickAt = 0;
   document.addEventListener("click", (e) => { const b = e.target && e.target.closest ? e.target.closest("button") : null; if (b) { lastClicked = b; lastClickAt = Date.now(); } }, true);
-  function showBusy(text, cls) {
-    const el = $("busy"); el.textContent = text; el.className = "pill busy " + (cls || ""); el.hidden = false;
+  function showBusy(html, cls) {
+    const el = $("busy"); el.innerHTML = html; el.className = "pill busy " + (cls || ""); el.hidden = false;
   }
   function send(type, extra) {
     if (type === "ready") return vscode.postMessage({ type });
@@ -448,7 +457,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
     if (btn) { btn.disabled = true; btn.classList.add("busy"); }
     const label = LABELS[type] || "Pracuji";
     pending.set(reqId, { btn, label, timer: setTimeout(() => finish(reqId, "bez odpovědi"), 20000) });
-    showBusy("⏳ " + label + "…");
+    showBusy(ic("loader", "spin") + " " + esc(label) + "…");
     vscode.postMessage({ type, reqId, ...(extra || {}) });
   }
   function finish(reqId, error) {
@@ -456,11 +465,46 @@ export class SidebarView implements vscode.WebviewViewProvider {
     pending.delete(reqId); clearTimeout(p.timer);
     if (p.btn) { p.btn.disabled = false; p.btn.classList.remove("busy"); }
     if (pending.size) return;
-    showBusy(error ? "✗ " + p.label + ": " + error : "✓ " + p.label, error ? "err" : "ok");
+    showBusy(error ? ic("x") + " " + esc(p.label) + ": " + esc(error) : ic("check") + " " + esc(p.label), error ? "err" : "ok");
     setTimeout(() => { if (!pending.size) $("busy").hidden = true; }, error ? 5000 : 1200);
   }
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const kb = (n) => (n / 1000).toFixed(1) + " k";
+  // ikony (Lucide, 24px mřížka, tenká linka): jednotný moderní styl místo emoji, barva podle okolního textu
+  const ICONS = {
+    lightbulb: '<path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>',
+    "file-text": '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+    settings: '<path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/>',
+    paperclip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+    loader: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+    x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+    copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    move: '<path d="M5 9 2 12l3 3"/><path d="m9 5 3-3 3 3"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="M12 2v20"/>',
+    send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+    square: '<rect width="14" height="14" x="5" y="5" rx="2"/>',
+    undo: '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
+    refresh: '<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>',
+    "help-circle": '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+    clipboard: '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
+    bot: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+    user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    terminal: '<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>',
+    "list-checks": '<path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+    "list-todo": '<rect x="3" y="5" width="6" height="6" rx="1"/><path d="m3 17 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/>',
+    "check-circle": '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/>',
+    "alert-circle": '<circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
+    trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+    info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+    message: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    "square-check": '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 12 2 2 4-4"/>',
+    "square-empty": '<rect width="18" height="18" x="3" y="3" rx="2"/>',
+  };
+  const ic = (name, cls) => '<svg class="ic' + (cls ? " " + cls : "") + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[name] || "") + "</svg>";
+  for (const el of document.querySelectorAll("[data-ic]")) el.innerHTML = ic(el.dataset.ic) + (el.dataset.label ? " " + el.dataset.label : "");
   let state = { items: [], commands: [], approvals: { mode: "ask", pending: [], history: [] }, review: [], log: [] };
   let lastCount = -1;
   let wasAsking = false;
@@ -495,7 +539,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
       if (!m) continue;
       const level = Math.min(3, Math.floor(m[1].replace(/\\t/g, "  ").length / 2));
       const done = m[2] !== " ";
-      items.push('<li class="l' + level + (done ? " done" : "") + '"><span class="box">' + (done ? "☑" : "☐") + "</span><span>" + esc(m[3]) + "</span></li>");
+      items.push('<li class="l' + level + (done ? " done" : "") + '"><span class="box">' + ic(done ? "square-check" : "square-empty") + "</span><span>" + esc(m[3]) + "</span></li>");
     }
     return '<ul class="check">' + items.join("") + "</ul>";
   }
@@ -520,7 +564,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
     $("modeBtn").className = "pill" + (state.approvals.mode === "auto" ? " on" : "");
     // doručení svazků: drag = příloha se po zkopírování promptu hned táhne do chatu (Alt+Tab, Enter)
     const drag = state.delivery === "drag";
-    $("bundlePill").textContent = "📎 " + (drag ? "drag" : state.delivery === "file" ? "soubor" : "historie");
+    $("bundlePill").innerHTML = ic("paperclip") + " " + (drag ? "drag" : state.delivery === "file" ? "soubor" : "historie");
     $("bundlePill").title = drag
       ? "Bundle se automaticky táhne do chatu (Alt+Tab do chatu, Enter pustí, Esc zruší). Kliknutím vypnete (svazek půjde do historie schránky)."
       : "Bundle jde " + (state.delivery === "file" ? "jako soubor ve schránce" : "do historie schránky (Win+V)") + ". Kliknutím zapnete automatické tažení do chatu z klávesnice (vyžaduje Python s pywin32).";
@@ -546,10 +590,10 @@ export class SidebarView implements vscode.WebviewViewProvider {
         const base = (sent ? after : "Vložte prompt do chatu (Ctrl+V); Whisper pozná, že byl vložen.") + " (" + kb(s.promptChars) + " znaků)";
         // přílohy (svazky souborů) musí být vidět, jinak uživatel neví, že má vložit i je
         $("bannerSub").innerHTML = esc(base) + (att.length
-          ? '<div class="att">📎 ' + esc(att.length > 1 ? att.length + " přílohy" : "příloha") + ": " +
+          ? '<div class="att">' + ic("paperclip") + esc(att.length > 1 ? att.length + " přílohy" : "příloha") + ": " +
             att.map((a) => '<span class="ref">' + esc(String(a.name || a)) + "</span>" +
               (a.chars ? ' <span class="sub">(' + kb(a.chars) + (a.ageMin != null ? ", " + (a.ageMin < 1 ? "právě teď" : a.ageMin < 60 ? "před " + a.ageMin + " min" : "před " + Math.round(a.ageMin / 60) + " h") : "") + ")</span>" : "") +
-              (a.ageMin > 30 ? ' <span class="badge" title="Soubor je starší než půl hodiny: nový svazek se v tomto kole nevytvořil">⚠ starý soubor</span>' : "")).join(", ") +
+              (a.ageMin > 30 ? ' <span class="badge" title="Soubor je starší než půl hodiny: nový svazek se v tomto kole nevytvořil">' + ic("alert") + 'starý soubor</span>' : "")).join(", ") +
             (s.delivery === "drag"
               ? '<br><span class="sub">Příloha se táhne z klávesnice: <b>Alt+Tab</b> do chatu (kurzor skočí do okna), <b>Enter</b> pustí, Esc zruší; pak Ctrl+V vloží prompt.</span>'
               : s.historyItems && s.historyItems.length
@@ -559,8 +603,8 @@ export class SidebarView implements vscode.WebviewViewProvider {
       } else $("bannerSub").textContent = sub;
       const b = $("bannerBtns"); b.innerHTML = "";
       if (s.state === "waitingForReply") {
-        b.innerHTML = '<button class="primary small" data-act="copyAgain">📋 Zkopírovat prompt znovu</button><button class="small" data-act="showPrompt">Zobrazit prompt</button><button class="small" data-act="pasteClip">Vzít odpověď ze schránky</button><button class="small" data-act="resend" title="Pro nový chat: preambule + shrnutí dosavadního průběhu">↻ Poslat celý kontext znovu</button><button class="ghost small" data-act="correction" title="Když model odpověděl bez bloku akcí a nebyla to otázka">Poslat opravný prompt</button>' +
-          ((s.attachments || []).length ? '<button class="small" data-act="drag" title="Přetáhne přílohu do chatu z klávesnice: Alt+Tab do chatu, Enter pustí, Esc zruší (vyžaduje Python s pywin32)">🖱 Táhnout přílohu do chatu</button>' : "");
+        b.innerHTML = '<button class="primary small" data-act="copyAgain">' + ic("copy") + ' Zkopírovat prompt znovu</button><button class="small" data-act="showPrompt">Zobrazit prompt</button><button class="small" data-act="pasteClip">Vzít odpověď ze schránky</button><button class="small" data-act="resend" title="Pro nový chat: preambule + shrnutí dosavadního průběhu">↻ Poslat celý kontext znovu</button><button class="ghost small" data-act="correction" title="Když model odpověděl bez bloku akcí a nebyla to otázka">Poslat opravný prompt</button>' +
+          ((s.attachments || []).length ? '<button class="small" data-act="drag" title="Přetáhne přílohu do chatu z klávesnice: Alt+Tab do chatu, Enter pustí, Esc zruší (vyžaduje Python s pywin32)">' + ic("move") + ' Táhnout přílohu do chatu</button>' : "");
       } else if (s.state === "awaitingUser") {
         b.innerHTML = '<button class="small" data-act="focus">Odpovědět</button>';
       } else if (s.state === "executing") {
@@ -640,38 +684,39 @@ export class SidebarView implements vscode.WebviewViewProvider {
   function renderItem(it, s) {
     const turn = it.turn ? '<span class="badge">kolo ' + it.turn + "</span>" : "";
     switch (it.kind) {
-      case "task": return '<div class="msg user"><div class="head"><b>Vy</b>' + (it.data && it.data.planMode ? '<span class="badge">plan</span>' : "") + '</div>' + md(it.text) + "</div>";
-      case "note": return '<div class="msg user"><div class="head"><b>Vy</b><span>poznámka k dalšímu promptu</span></div>' + md(it.text) + "</div>";
-      case "answer": return '<div class="msg user"><div class="head"><b>Vy</b><span>odpověď</span></div>' + md(it.text) + "</div>";
+      case "task": return '<div class="msg user"><div class="head">' + ic("user") + '<b>Vy</b>' + (it.data && it.data.planMode ? '<span class="badge">plan</span>' : "") + '</div>' + md(it.text) + "</div>";
+      case "note": return '<div class="msg user"><div class="head">' + ic("user") + '<b>Vy</b><span>poznámka k dalšímu promptu</span></div>' + md(it.text) + "</div>";
+      case "answer": return '<div class="msg user"><div class="head">' + ic("user") + '<b>Vy</b><span>odpověď</span></div>' + md(it.text) + "</div>";
       case "dialog": {
         const d = it.data || {};
-        if (d.from === "user") return '<div class="msg user"><div class="head"><b>Vy</b><span>napsáno přímo v chatu</span></div>' + md(it.text) + "</div>";
-        return '<div class="msg ask"><div class="head"><b>Model' + (d.live ? " se ptá v chatu" : " se ptal v chatu") + "</b>" + turn + "</div>" + md(it.text) + (d.live ? '<div class="sub">Odpovězte přímo v chatu a zkopírujte jeho další odpověď.</div>' : "") + "</div>";
+        if (d.from === "user") return '<div class="msg user"><div class="head">' + ic("user") + '<b>Vy</b><span>napsáno přímo v chatu</span></div>' + md(it.text) + "</div>";
+        return '<div class="msg ask"><div class="head">' + ic("message") + '<b>Model' + (d.live ? " se ptá v chatu" : " se ptal v chatu") + "</b>" + turn + "</div>" + md(it.text) + (d.live ? '<div class="sub">Odpovězte přímo v chatu a zkopírujte jeho další odpověď.</div>' : "") + "</div>";
       }
       case "prompt": {
-        const att = it.data && it.data.attachments && it.data.attachments.length ? " · 📎 " + it.data.attachments.map((a) => esc(String(a).split("/").pop())).join(", ") : "";
-        return '<div class="line">📋 kolo ' + it.turn + " · prompt ve schránce (" + kb(it.data ? it.data.chars : 0) + (it.data && it.data.mode === "file" ? ", soubory" : "") + ")" + att + '<span class="btns"><button class="ghost small" data-act="copyAgain">znovu</button><button class="ghost small" data-act="showPrompt">zobrazit</button></span></div>';
+        const att = it.data && it.data.attachments && it.data.attachments.length ? " · " + ic("paperclip") + it.data.attachments.map((a) => esc(String(a).split("/").pop())).join(", ") : "";
+        return '<div class="line"><span class="txt">' + ic("clipboard") + 'kolo ' + it.turn + " · prompt ve schránce (" + kb(it.data ? it.data.chars : 0) + (it.data && it.data.mode === "file" ? ", soubory" : "") + ")" + att + '</span><span class="btns"><button class="ghost small" data-act="copyAgain">znovu</button><button class="ghost small" data-act="showPrompt">zobrazit</button></span></div>';
       }
-      case "status": return '<div class="msg model"><div class="head"><b>Model</b>' + turn + "</div>" + md(it.text) + "</div>";
-      case "actions": return '<div class="msg tools"><div class="head"><b>Akce</b>' + turn + '</div><div class="chips">' + (it.data || []).map((a) => '<span class="chip">' + esc(a.tool) + (a.target ? " " + esc(a.target) : "") + "</span>").join("") + "</div></div>";
-      case "results": return '<div class="msg tools"><div class="head"><b>Výsledky</b>' + turn + '</div><div class="chips">' + (it.data || []).map((r) => '<span class="chip ' + (r.status === "ok" ? "ok" : "err") + '">' + (r.status === "ok" ? "✓" : "✗") + " " + esc(r.tool) + (r.target ? " " + esc(String(r.target).slice(0, 60)) : "") + (r.meta && r.meta.exit !== undefined ? " exit " + esc(r.meta.exit) : "") + (r.meta && r.meta.hunks ? " " + esc(r.meta.hunks) : "") + "</span>").join("") + "</div></div>";
-      case "plan": return '<div class="msg plan"><div class="head"><b>Plán</b>' + turn + "</div>" + checklist(it.text) + "</div>";
+      case "status": return '<div class="msg model"><div class="head">' + ic("bot") + '<b>Model</b>' + turn + "</div>" + md(it.text) + "</div>";
+      case "actions": return '<div class="msg tools"><div class="head">' + ic("terminal") + '<b>Akce</b>' + turn + '</div><div class="chips">' + (it.data || []).map((a) => '<span class="chip">' + esc(a.tool) + (a.target ? " " + esc(a.target) : "") + "</span>").join("") + "</div></div>";
+      case "results": return '<div class="msg tools"><div class="head">' + ic("list-checks") + '<b>Výsledky</b>' + turn + '</div><div class="chips">' + (it.data || []).map((r) => '<span class="chip ' + (r.status === "ok" ? "ok" : "err") + '">' + (r.status === "ok" ? ic("check") : ic("x")) +" " + esc(r.tool) + (r.target ? " " + esc(String(r.target).slice(0, 60)) : "") + (r.meta && r.meta.exit !== undefined ? " exit " + esc(r.meta.exit) : "") + (r.meta && r.meta.hunks ? " " + esc(r.meta.hunks) : "") + "</span>").join("") + "</div></div>";
+      case "plan": return '<div class="msg plan"><div class="head">' + ic("list-todo") + '<b>Plán</b>' + turn + "</div>" + checklist(it.text) + "</div>";
       case "ask": {
         const o = (it.data && it.data.options) || [];
         const live = s && s.state === "awaitingUser" && s.pendingQuestion === it.text;
         const opts = o.length && live ? '<div class="btns">' + o.map((x) => '<button class="small" data-act="pick" data-opt="' + esc(x) + '">' + esc(x) + "</button>").join("") + (it.data.multi ? '<span class="badge">více možností: vyberte dole</span>' : "") + "</div>" : "";
-        return '<div class="msg ask"><div class="head"><b>Model se ptá</b></div>' + md(it.text) + opts + "</div>";
+        return '<div class="msg ask"><div class="head">' + ic("help-circle") + '<b>Model se ptá</b></div>' + md(it.text) + opts + "</div>";
       }
-      case "done": return '<div class="msg done"><div class="head"><b>Hotovo</b></div>' + md(it.text) + "</div>";
-      case "error": return '<div class="msg error"><div class="head"><b>Chyba</b>' + turn + "</div>" + esc(it.text) + "</div>";
-      case "undo": return '<div class="line">↶ ' + esc(it.text) + "</div>";
+      case "done": return '<div class="msg done"><div class="head">' + ic("check-circle") + '<b>Hotovo</b></div>' + md(it.text) + "</div>";
+      case "error": return '<div class="msg error"><div class="head">' + ic("alert-circle") + '<b>Chyba</b>' + turn + "</div>" + esc(it.text) + "</div>";
+      case "undo": return '<div class="line"><span class="txt">' + ic("undo") + esc(it.text) + "</span></div>";
+      case "info": return '<div class="line"><span class="txt">' + ic(it.data && it.data.icon ? it.data.icon : "info") + esc(it.text) + "</span></div>";
       case "suggestion": {
         const d = it.data || {};
         const live = s && s.suggestions ? s.suggestions.find((x) => x.id === d.id) : null;
         const decision = (live && live.decision) || d.decision;
         const dup = (live && live.duplicate) || d.duplicate;
-        return '<div class="line">💡 návrh <span class="badge">' + esc(d.kind) + "</span> " + (d.update ? '<span class="badge" title="úprava existující položky">upravuje ' + esc(d.update) + "</span> " : "") + esc(d.title) +
-          (dup ? ' <span class="badge" title="stejná věc už existuje, návrh se přeskočil">duplikát</span>' : decision ? ' <span class="badge">' + (decision === "approved" ? "přijato" : "zamítnuto") + "</span>" : " · čeká v sekci Návrhy") + "</div>";
+        return '<div class="line"><span class="txt">' + ic("lightbulb") + 'návrh <span class="badge">' + esc(d.kind) + "</span> " + (d.update ? '<span class="badge" title="úprava existující položky">upravuje ' + esc(d.update) + "</span> " : "") + esc(d.title) +
+          (dup ? ' <span class="badge" title="stejná věc už existuje, návrh se přeskočil">duplikát</span>' : decision ? ' <span class="badge">' + (decision === "approved" ? "přijato" : "zamítnuto") + "</span>" : " · čeká v sekci Návrhy") + "</span></div>";
       }
       default: return "";
     }
@@ -680,7 +725,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
   function renderApproval(a) {
     const isCmd = a.kind === "command";
     const suggested = isCmd ? "^" + esc(a.text.split(/\\s+/).slice(0, 2).map((w) => w.replace(/[.*+?^$(){}|[\\]\\\\]/g, "\\\\$&")).join("\\\\s+")) + "\\\\b" : "";
-    return '<div class="msg approval" data-approval="' + esc(a.id) + '"><div class="head"><b>' + (isCmd ? "Spustit příkaz?" : "Smazat soubor?") + "</b>" + (a.cwd && a.cwd !== "." ? '<span>v ' + esc(a.cwd) + "</span>" : "") + '</div><span class="cmd">' + esc(a.text) + "</span>" +
+    return '<div class="msg approval" data-approval="' + esc(a.id) + '"><div class="head">' + ic(isCmd ? "terminal" : "trash") + '<b>' + (isCmd ? "Spustit příkaz?" : "Smazat soubor?") + "</b>" + (a.cwd && a.cwd !== "." ? '<span>v ' + esc(a.cwd) + "</span>" : "") + '</div><span class="cmd">' + esc(a.text) + "</span>" +
       '<div class="btns"><button class="primary small" data-act="allow" data-id="' + esc(a.id) + '">Povolit</button><button class="small" data-act="deny" data-id="' + esc(a.id) + '">Zamítnout</button>' +
       (isCmd ? '<button class="small" data-act="allowAlways" data-id="' + esc(a.id) + '">Povolit vždy (regex) ▸</button><button class="small" data-act="autoAll" title="Přepne schvalování na auto a povolí čekající příkazy">Auto (dál se neptat)</button>' : "") + "</div>" +
       (isCmd ? '<div class="btns" data-always="' + esc(a.id) + '" hidden><input type="text" value="' + suggested + '" placeholder="regulární výraz na celý příkaz"><button class="primary small" data-act="allowAlwaysGo" data-id="' + esc(a.id) + '">Uložit a povolit</button></div>' : "") + "</div>";

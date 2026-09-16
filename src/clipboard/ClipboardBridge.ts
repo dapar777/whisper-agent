@@ -70,6 +70,14 @@ export class ClipboardBridge implements vscode.Disposable {
   private dragging = false;
   /** hlášky pro log v panelu (sledování složky s odpověďmi) */
   readonly onDidLog = this.logEmitter.event;
+  private readonly noticeEmitter = new vscode.EventEmitter<{ text: string; icon?: string }>();
+  /** oznámení pro uživatele přímo do proudu v panelu (tažení přílohy, selhání doručení) */
+  readonly onDidNotify = this.noticeEmitter.event;
+
+  private notify(text: string, icon?: string): void {
+    this.logEmitter.fire(text);
+    this.noticeEmitter.fire({ text, icon });
+  }
 
   /**
    * Uloží prompt do schránky. Nad prahem `clipboard.fileAboveChars` (jen Windows)
@@ -106,7 +114,7 @@ export class ClipboardBridge implements vscode.Disposable {
           copied.push(a);
         } catch (e) {
           // tichý pád by uživateli vzal přílohu bez varování: nahlásíme a necháme ji jako soubor
-          this.logEmitter.fire(`Svazek ${a} se nepodařilo dát do historie schránky (${(e as Error).message}); zkusím ho přiložit jako soubor.`);
+          this.notify(`Svazek ${a} se nepodařilo dát do historie schránky (${(e as Error).message}); zkusím ho přiložit jako soubor.`, "alert");
         }
       }
       // do historie šlo jen to, co se povedlo; zbytek pokračuje cestou souborů
@@ -149,16 +157,17 @@ export class ClipboardBridge implements vscode.Disposable {
     }
     this.dragging = true;
     const names = files.map((f) => path.basename(f)).join(", ");
-    this.logEmitter.fire(`🖱 Táhnu ${names}: Alt+Tab do chatu (kurzor skočí do okna), Enter pustí, Esc zruší. Pak Ctrl+V vloží prompt.`);
+    this.notify(`Táhnu ${names}: Alt+Tab do chatu (kurzor skočí do okna), Enter pustí, Esc zruší. Pak Ctrl+V vloží prompt.`, "move");
     vscode.window.setStatusBarMessage(`$(move) Whisper: táhnu ${names}: Alt+Tab do chatu, Enter pustí`, 30000);
     try {
       const r = await runDrag(this.scriptsDir, files, cfg<string>("bundle.python", "python"));
-      if (r.result === "copy" || r.result === "move") this.logEmitter.fire(`✓ ${names}: puštěno do okna.`);
-      else if (r.result === "none") this.logEmitter.fire(`Tažení ${names} zrušeno (Esc). Znovu tlačítkem „Táhnout přílohu do chatu“, nebo soubor přiložte ručně z .whisper/out/.`);
+      if (r.result === "copy" || r.result === "move") this.notify(`${names}: puštěno do okna.`, "check");
+      else if (r.result === "none") this.notify(`Tažení ${names} zrušeno (Esc). Znovu tlačítkem „Táhnout přílohu do chatu“, nebo soubor přiložte ručně z .whisper/out/.`, "undo");
       else
-        this.logEmitter.fire(
+        this.notify(
           `Tažení se nepovedlo (${r.detail === "ENOENT" ? "python nenalezen; nastavte whisper.bundle.python" : r.detail}). ` +
             `Vyžaduje Python s pywin32 (pip install pywin32). Přílohu přiložte ručně: ${names}.`,
+          "alert",
         );
     } finally {
       this.dragging = false;
