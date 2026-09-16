@@ -133,7 +133,8 @@ schránky jdou soubory `prompt-N.txt` + `bundle-N.txt` a jedno `Ctrl+V` v chatu 
 `pip install pywin32`; interpret nastavíte v `whisper.bundle.python`), stejný mechanismus jako
 klávesový drag & drop v mortalmanageru; před startem odlepí zaseknutý Esc/Enter, jinak by drag skončil
 hned. Tlačítko „Táhnout přílohu do chatu“ v panelu (nebo příkaz Whisper: Přetáhnout přílohu) to spustí
-znovu, v kterémkoli režimu doručení. Svazek je vždy soubor `*.txt` (jiné formáty chaty často odmítají);
+znovu, v kterémkoli režimu doručení. Přepínač `📎` v horní liště panelu ukazuje aktuální doručení
+(historie / soubor / drag) a kliknutím zapne nebo vypne automatické tažení. Svazek je vždy soubor `*.txt` (jiné formáty chaty často odmítají);
 v názvu (`bundle-<kolo>-<n>-<yymmdd-HHMM>.txt`) i v první řádce má čas vzniku, panel u přílohy ukazuje
 její stáří a starý soubor označí. Prompt modelu říká, že svazek je přiložen, a co dělat, když ho nevidí.
 Přílohy z kola, ve kterém se model zároveň zeptal (`<ask>`), jdou s odpovědí na otázku.

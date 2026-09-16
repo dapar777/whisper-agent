@@ -32,6 +32,10 @@ export class SidebarView implements vscode.WebviewViewProvider {
       this.onMessage(m).catch((e: Error) => void vscode.window.showErrorMessage(`Whisper: ${e.message}`)),
     );
     view.onDidChangeVisibility(() => void this.push());
+    // změna nastavení (v panelu i v nastavení VS Code) se má v horní liště projevit hned
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("whisper")) void this.push();
+    });
     void this.push();
   }
 
@@ -60,6 +64,13 @@ export class SidebarView implements vscode.WebviewViewProvider {
         return c.copyPromptAgain();
       case "drag":
         return c.dragAttachments();
+      case "setDelivery": {
+        // přepínač v horní liště: drag = svazky a přílohy se hned táhnou do chatu; jinak historie schránky
+        const value = m.text === "drag" || m.text === "file" ? m.text : "history";
+        await vscode.workspace.getConfiguration("whisper").update("bundle.delivery", value, vscode.ConfigurationTarget.Global);
+        vscode.window.setStatusBarMessage(value === "drag" ? "$(move) Whisper: bundle se bude automaticky táhnout do chatu" : "Whisper: bundle půjde do historie schránky", 4000);
+        return this.push();
+      }
       case "showPrompt":
         return c.showPrompt();
       case "pasteClip":
@@ -127,6 +138,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
       items: c.items.slice(-150),
       current: c.currentAction,
       promptPhase: c.promptPhase,
+      delivery: vscode.workspace.getConfiguration("whisper").get<string>("bundle.delivery", "history"),
       approvals: { mode: c.approvals.mode, pending: c.approvals.pendingRequests, history: c.approvals.history.slice(-8), patterns: c.approvals.allowPatterns() },
       review: c.review.pendingFiles.map((f) => ({ path: f.path, kind: f.kind, hunks: hunks.filter((h) => h.path === f.path).length })),
       commands: c.commands().map((x) => ({ name: x.name, kind: x.kind, description: x.description })),
@@ -295,6 +307,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
     <span id="planPill" class="pill" hidden>PLAN</span>
     <div class="spacer"></div>
     <button id="modeBtn" class="pill" title="Schvalování příkazů mimo allowlist">ptát se</button>
+    <button id="bundlePill" class="pill" title="Doručení svazků (bundle) a příloh do chatu; kliknutím zapnete/vypnete automatické tažení z klávesnice">📎</button>
     <button id="menuSuggest" class="ghost small" title="Navrhnout skilly, hooky a úkoly z průběhu">💡</button>
     <button id="menuTranscript" class="ghost small" title="Otevřít záznam průběhu (.whisper/transcript.jsonl)">🗒</button>
     <button id="menuSettings" class="ghost small" title="Otevřít nastavení Whisperu">⚙</button>
@@ -402,6 +415,13 @@ export class SidebarView implements vscode.WebviewViewProvider {
     $("modeBtn").textContent = (state.approvals.mode === "auto" ? "auto" : "ptát se") + (pat ? " · " + pat : "");
     $("modeBtn").title = "Schvalování příkazů" + (pat ? " · výjimek: " + pat : "") + " (klikněte pro nastavení)";
     $("modeBtn").className = "pill" + (state.approvals.mode === "auto" ? " on" : "");
+    // doručení svazků: drag = příloha se po zkopírování promptu hned táhne do chatu (Alt+Tab, Enter)
+    const drag = state.delivery === "drag";
+    $("bundlePill").textContent = "📎 " + (drag ? "drag" : state.delivery === "file" ? "soubor" : "historie");
+    $("bundlePill").title = drag
+      ? "Bundle se automaticky táhne do chatu (Alt+Tab do chatu, Enter pustí, Esc zruší). Kliknutím vypnete (svazek půjde do historie schránky)."
+      : "Bundle jde " + (state.delivery === "file" ? "jako soubor ve schránce" : "do historie schránky (Win+V)") + ". Kliknutím zapnete automatické tažení do chatu z klávesnice (vyžaduje Python s pywin32).";
+    $("bundlePill").className = "pill" + (drag ? " on" : "");
     renderExceptions();
     renderSuggestions();
     $("stopBtn").hidden = !(active && s.state !== "done");
@@ -672,6 +692,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
   $("send").onclick = submit;
   $("slash").onclick = () => { if (!popup.hidden) { popup.hidden = true; return; } sel = 0; showPopup("", true); input.focus(); };
   $("modeBtn").onclick = () => { $("exceptions").hidden = !$("exceptions").hidden; };
+  $("bundlePill").onclick = () => send("setDelivery", { text: state.delivery === "drag" ? "history" : "drag" });
   $("exClose").onclick = () => { $("exceptions").hidden = true; };
   $("modeAsk").onclick = () => send("setMode", { mode: "ask" });
   $("modeAuto").onclick = () => send("setMode", { mode: "auto" });
