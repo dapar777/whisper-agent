@@ -256,6 +256,14 @@ holý blok na začátku odpovědi: plán, čtyři `<edit>` (všechny hunky proš
 `<ask>`. Rozhodující byla podle něj připomínka v první osobě v jazyce uživatele a předvedené selhání
 (`<protocol-error>` + `<note>`), ne anglická preambule.
 
+### 3.7 Odezva panelu
+
+Každý požadavek z panelu nese `reqId`; extension ho po vyřízení potvrdí zprávou `ack` (s případnou chybou).
+Panel do té doby ukazuje v horní liště „⏳ co dělá…“ a kliknuté tlačítko drží zamčené, po potvrzení krátce
+„✓“ (chybu 5 s). Překreslení panelu (`push`) se sbírá 30 ms a nikdy neběží dvakrát najednou; seznam souborů
+workspace pro doplňování `#odkazů` (drahé `findFiles`) je v cache s obnovou na pozadí nejvýš jednou za 15 s
+a posílá se jen při změně, hunky ke schválení se počítají jen když nějaké čekají.
+
 ## 4. Architektura extensionu
 
 ```

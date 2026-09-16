@@ -28,9 +28,19 @@ export class SidebarView implements vscode.WebviewViewProvider {
     this.view = view;
     view.webview.options = { enableScripts: true, localResourceRoots: [this.extensionUri] };
     view.webview.html = this.html(view.webview);
-    view.webview.onDidReceiveMessage((m) =>
-      this.onMessage(m).catch((e: Error) => void vscode.window.showErrorMessage(`Whisper: ${e.message}`)),
-    );
+    view.webview.onDidReceiveMessage((m: { type: string; reqId?: number }) => {
+      // každý požadavek z panelu se potvrdí (ack): panel do té doby ukazuje „⏳ dělám…“ a tlačítko je zamčené
+      const ack = (error?: string) => {
+        if (m.reqId) void view.webview.postMessage({ type: "ack", reqId: m.reqId, error });
+      };
+      this.onMessage(m).then(
+        () => ack(),
+        (e: Error) => {
+          ack(e.message);
+          void vscode.window.showErrorMessage(`Whisper: ${e.message}`);
+        },
+      );
+    });
     view.onDidChangeVisibility(() => void this.push());
     // změna nastavení (v panelu i v nastavení VS Code) se má v horní liště projevit hned
     vscode.workspace.onDidChangeConfiguration((e) => {
@@ -110,10 +120,68 @@ export class SidebarView implements vscode.WebviewViewProvider {
     }
   }
 
-  private async push(): Promise<void> {
+  private pushTimer: NodeJS.Timeout | undefined;
+  private pushing = false;
+  private pushAgain = false;
+  /** seznam souborů workspace pro doplňování #odkazů: drahý (findFiles), proto cache a posílá se jen při změně */
+  private filesCache: { at: number; list: string[]; version: number } = { at: 0, list: [], version: 0 };
+  private filesRefreshing = false;
+  private filesSentVersion = -1;
+
+  /**
+   * Překreslení panelu: změny se sbírají (několik událostí za sebou = jedno překreslení) a nikdy neběží
+   * dvě najednou; když během sběru dat přijde další změna, překreslí se hned potom ještě jednou.
+   */
+  push(): Promise<void> {
+    if (this.pushTimer) return Promise.resolve();
+    this.pushTimer = setTimeout(() => {
+      this.pushTimer = undefined;
+      void this.pushNow();
+    }, 30);
+    return Promise.resolve();
+  }
+
+  private async pushNow(): Promise<void> {
+    if (this.pushing) {
+      this.pushAgain = true;
+      return;
+    }
+    this.pushing = true;
+    try {
+      await this.doPush();
+    } finally {
+      this.pushing = false;
+      if (this.pushAgain) {
+        this.pushAgain = false;
+        void this.push();
+      }
+    }
+  }
+
+  /** Soubory workspace z cache (obnova na pozadí nejvýš jednou za 15 s); první volání počká. */
+  private async workspaceFilesCached(): Promise<{ list: string[]; version: number }> {
+    const stale = Date.now() - this.filesCache.at > 15_000;
+    if (stale && !this.filesRefreshing) {
+      this.filesRefreshing = true;
+      const refresh = this.controller
+        .workspaceFiles()
+        .then((list) => {
+          const changed = list.length !== this.filesCache.list.length || list.some((f, i) => f !== this.filesCache.list[i]);
+          this.filesCache = { at: Date.now(), list, version: changed ? this.filesCache.version + 1 : this.filesCache.version };
+          if (changed && this.filesCache.at) void this.push();
+        })
+        .catch(() => undefined)
+        .finally(() => (this.filesRefreshing = false));
+      if (this.filesCache.at === 0) await refresh; // poprvé: bez seznamu by doplňování nefungovalo
+    }
+    return this.filesCache;
+  }
+
+  private async doPush(): Promise<void> {
     if (!this.view) return;
     const c = this.controller;
-    const hunks = await c.review.pendingHunks();
+    const hunks = c.review.pendingFiles.length ? await c.review.pendingHunks() : [];
+    const files = await this.workspaceFilesCached();
     const s = c.session.current;
     const state = {
       session: s
@@ -142,11 +210,13 @@ export class SidebarView implements vscode.WebviewViewProvider {
       approvals: { mode: c.approvals.mode, pending: c.approvals.pendingRequests, history: c.approvals.history.slice(-8), patterns: c.approvals.allowPatterns() },
       review: c.review.pendingFiles.map((f) => ({ path: f.path, kind: f.kind, hunks: hunks.filter((h) => h.path === f.path).length })),
       commands: c.commands().map((x) => ({ name: x.name, kind: x.kind, description: x.description })),
-      files: await c.workspaceFiles(),
+      // seznam souborů jen když se změnil (panel si drží minulý); ušetří serializaci tisíců řetězců při každém překreslení
+      files: files.version !== this.filesSentVersion ? files.list : undefined,
       editor: c.editorInfo(),
       log: c.log.slice(-80),
     };
-    void this.view.webview.postMessage({ type: "state", state });
+    const posted = await this.view.webview.postMessage({ type: "state", state });
+    if (posted && state.files) this.filesSentVersion = files.version;
   }
 
   private html(webview: vscode.Webview): string {
@@ -194,6 +264,10 @@ export class SidebarView implements vscode.WebviewViewProvider {
   .spacer { flex: 1; }
   .pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
   .pill.on { border-color: var(--accent); color: var(--accent); }
+  .pill.busy { color: var(--accent); border-color: var(--accent); max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+  .pill.busy.ok { color: var(--ok, #3c9); border-color: var(--ok, #3c9); }
+  .pill.busy.err { color: var(--error, #e55); border-color: var(--error, #e55); }
+  button.busy { opacity: 0.6; cursor: progress; }
 
   /* stavový banner: plave na konci proudu, ne nad ním */
   .banner { margin: 2px 0 4px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); display: flex; flex-direction: column; gap: 4px; }
@@ -308,6 +382,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
     <div class="spacer"></div>
     <button id="modeBtn" class="pill" title="Schvalování příkazů mimo allowlist">ptát se</button>
     <button id="bundlePill" class="pill" title="Doručení svazků (bundle) a příloh do chatu; kliknutím zapnete/vypnete automatické tažení z klávesnice">📎</button>
+    <span id="busy" class="pill busy" hidden></span>
     <button id="menuSuggest" class="ghost small" title="Navrhnout skilly, hooky a úkoly z průběhu">💡</button>
     <button id="menuTranscript" class="ghost small" title="Otevřít záznam průběhu (.whisper/transcript.jsonl)">🗒</button>
     <button id="menuSettings" class="ghost small" title="Otevřít nastavení Whisperu">⚙</button>
@@ -355,7 +430,35 @@ export class SidebarView implements vscode.WebviewViewProvider {
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   const $ = (id) => document.getElementById(id);
-  const send = (type, extra) => vscode.postMessage({ type, ...(extra || {}) });
+  // Každý požadavek dostane reqId; do potvrzení (ack) z extensionu panel ukazuje „⏳ …“ v horní liště a
+  // kliknuté tlačítko je zamčené, aby bylo hned vidět, že se něco děje, a nešlo to spustit dvakrát.
+  const LABELS = { send: "Odesílám zadání", copyAgain: "Kopíruji prompt do schránky", showPrompt: "Otevírám prompt", pasteClip: "Beru odpověď ze schránky", resend: "Skládám celý kontext", correction: "Posílám opravný prompt", suggest: "Připravuji návrhy", drag: "Spouštím tažení přílohy", interrupt: "Přerušuji akce", stop: "Ruším úkol", undo: "Vracím poslední kolo", approve: "Zpracovávám rozhodnutí", suggestion: "Ukládám návrh", suggestionsAll: "Ukládám návrhy", setDelivery: "Měním doručení svazků", setMode: "Měním schvalování", autoAll: "Přepínám na auto", transcript: "Otevírám záznam", reloadSkills: "Načítám skilly", settings: "Otevírám nastavení", reviewNext: "Otevírám změny", acceptAll: "Přijímám změny", rejectAll: "Zamítám změny", acceptFile: "Přijímám soubor", rejectFile: "Zamítám soubor", openDiff: "Otevírám diff", addPattern: "Ukládám výjimku", removePattern: "Mažu výjimku" };
+  let reqSeq = 0;
+  const pending = new Map();
+  let lastClicked = null;
+  let lastClickAt = 0;
+  document.addEventListener("click", (e) => { const b = e.target && e.target.closest ? e.target.closest("button") : null; if (b) { lastClicked = b; lastClickAt = Date.now(); } }, true);
+  function showBusy(text, cls) {
+    const el = $("busy"); el.textContent = text; el.className = "pill busy " + (cls || ""); el.hidden = false;
+  }
+  function send(type, extra) {
+    if (type === "ready") return vscode.postMessage({ type });
+    const reqId = ++reqSeq;
+    const btn = Date.now() - lastClickAt < 300 ? lastClicked : null;
+    if (btn) { btn.disabled = true; btn.classList.add("busy"); }
+    const label = LABELS[type] || "Pracuji";
+    pending.set(reqId, { btn, label, timer: setTimeout(() => finish(reqId, "bez odpovědi"), 20000) });
+    showBusy("⏳ " + label + "…");
+    vscode.postMessage({ type, reqId, ...(extra || {}) });
+  }
+  function finish(reqId, error) {
+    const p = pending.get(reqId); if (!p) return;
+    pending.delete(reqId); clearTimeout(p.timer);
+    if (p.btn) { p.btn.disabled = false; p.btn.classList.remove("busy"); }
+    if (pending.size) return;
+    showBusy(error ? "✗ " + p.label + ": " + error : "✓ " + p.label, error ? "err" : "ok");
+    setTimeout(() => { if (!pending.size) $("busy").hidden = true; }, error ? 5000 : 1200);
+  }
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const kb = (n) => (n / 1000).toFixed(1) + " k";
   let state = { items: [], commands: [], approvals: { mode: "ask", pending: [], history: [] }, review: [], log: [] };
@@ -741,7 +844,13 @@ export class SidebarView implements vscode.WebviewViewProvider {
   document.addEventListener("click", (e) => { if (!popup.contains(e.target) && e.target !== $("slash") && e.target !== input) popup.hidden = true; });
 
   setInterval(() => { const el = $("elapsed"); if (el) { const s = Math.round((Date.now() - Number(el.dataset.start)) / 1000); el.textContent = "· " + (s >= 60 ? Math.floor(s / 60) + " min " + (s % 60) + " s" : s + " s"); } }, 1000);
-  window.addEventListener("message", (e) => { if (e.data.type === "state") { state = e.data.state; render(); } });
+  window.addEventListener("message", (e) => {
+    if (e.data.type === "state") {
+      // seznam souborů chodí jen při změně; jinak zůstává minulý
+      if (e.data.state.files === undefined) e.data.state.files = state.files || [];
+      state = e.data.state; render();
+    } else if (e.data.type === "ack") finish(e.data.reqId, e.data.error);
+  });
   send("ready");
 </script>
 </body></html>`;
