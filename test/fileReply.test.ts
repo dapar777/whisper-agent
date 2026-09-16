@@ -46,3 +46,23 @@ describe("FileReplyWatcher", () => {
     expect(logs.some((l) => l.includes("notes.txt") && l.includes("ignoruji"))).toBe(true);
   });
 });
+
+describe("reply as a downloaded XML file", () => {
+  it("accepts whisper-reply-N.xml with an <?xml?> header and CDATA bodies, and it parses into actions", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "whisper-inbox-"));
+    const xml =
+      '<?xml version="1.0" encoding="UTF-8"?>\n<whisper turn="3">\n<status><![CDATA[Jdu na to]]></status>\n' +
+      '<write path="docs/a.md"><![CDATA[\n# A\n\n<b>x</b> & y\n]]></write>\n<done><![CDATA[Hotovo.]]></done>\n</whisper>\n';
+    const got = await waitFor<{ text: string; file: string }>((resolve) => {
+      const w = new FileReplyWatcher({ dir, pattern: "*.{xml,md,txt}", pollMs: 200, lastPrompt: "", onReply: (text, file) => resolve({ text, file }) });
+      w.start();
+      setTimeout(() => fs.writeFileSync(path.join(dir, "whisper-reply-3.xml"), "﻿" + xml, "utf8"), 100);
+    });
+    expect(path.basename(got.file)).toBe("whisper-reply-3.xml");
+    const { parseReply } = await import("../src/protocol/ResponseParser");
+    const p = parseReply(got.text, 3);
+    expect(p.errors).toEqual([]);
+    expect(p.turn).toBe(3);
+    expect(p.actions.map((a) => a.body)).toEqual(["Jdu na to", "# A\n\n<b>x</b> & y", "Hotovo."]);
+  });
+});

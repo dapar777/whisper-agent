@@ -721,6 +721,7 @@ export class Controller implements vscode.Disposable {
         reviewBeforeDone: cfg("review.beforeDone", true),
         initialBundle: cfg<"off" | "full">("bundle.initial", "off"),
         initialBundleFormat: cfg<"compact" | "numbered">("bundle.initialFormat", "compact"),
+        replyMode: cfg<"file" | "clipboard">("reply.mode", "file"),
       },
       listener,
     ) as TurnEngine & { hostRef(): VsCodeHost };

@@ -109,12 +109,20 @@
           "type": "string", "default": "python",
           "description": "Python pro tažení příloh z klávesnice (scripts/dragdrop.py, potřebuje pywin32). Když není v PATH, zkusí se spouštěč „py -3“."
         },
+        "whisper.reply.mode": {
+          "type": "string", "enum": ["file", "clipboard"], "default": "file",
+          "enumDescriptions": [
+            "Model má odpověď dát jako soubor ke stažení whisper-reply-N.xml (obsah = blok <whisper>, těla klidně v CDATA). Whisper ho převezme ze složky stahování; zkopírovaný text z chatu bere dál jako zálohu.",
+            "Model odpovídá textem v chatu, odpověď se kopíruje do schránky (Ctrl+C)."
+          ],
+          "description": "Jak má model doručit odpověď. Soubor ke stažení se osvědčil víc: model ho drží pohromadě a nic z něj neztratí."
+        },
         "whisper.reply.watchDir": {
           "type": "string", "default": "",
-          "description": "Složka, ve které se čeká na odpověď modelu jako NOVÝ soubor (např. složka stahování prohlížeče). Prázdné = jen schránka. Soubor se převezme, až se přestane měnit, a ověří stejně jako text ze schránky."
+          "description": "Složka, ve které se čeká na odpověď modelu jako NOVÝ soubor. Prázdné = složka stahování uživatele (Downloads) v režimu souboru, jinak jen schránka. Soubor se převezme, až se přestane měnit, a ověří stejně jako text ze schránky."
         },
         "whisper.reply.filePattern": {
-          "type": "string", "default": "*.{md,txt}",
+          "type": "string", "default": "*.{xml,md,txt}",
           "description": "Glob na název souboru s odpovědí ve složce whisper.reply.watchDir."
         },
         "whisper.prompt.header": {

@@ -166,11 +166,17 @@ a svazek se přiloží jako soubor, místo aby tiše zmizel.
 (`src/tools/bundle.ts:74`), jsou v panelu odkazy; kliknutím se soubor otevře a odroluje na daný
 řádek. Samotný název bez adresáře ani čísla verzí se nelinkují.
 
-**Odpověď v souboru** (`whisper.reply.watchDir`): kromě schránky lze odpověď modelu doručit
-jako **nový soubor** ve sledované složce, třeba ve složce stahování prohlížeče. Sledují se jen
-soubory vzniklé po odeslání promptu, název musí vyhovovat `whisper.reply.filePattern`
-(výchozí `*.{md,txt}`), soubor se přečte, až se přestane měnit (stahování po částech), a ověří
-stejně jako text ze schránky. Soubory bez bloku `<whisper turn=…>` se ignorují (vidět v logu).
+**Odpověď jako XML soubor ke stažení** (`whisper.reply.mode`, výchozí `file`): model je požádán, aby
+každou odpověď přiložil jako soubor `whisper-reply-N.xml` (N = číslo kola), jehož obsahem je blok
+`<whisper>`; těla akcí smí v souboru zabalit do `<![CDATA[ … ]]>`, agent je rozbalí, a v chatu má napsat
+jen pár slov. Osvědčilo se to víc než kopírování textu z chatu: model soubor drží pohromadě a nic z něj
+neztratí. Stažený soubor se převezme ze sledované složky (`whisper.reply.watchDir`, prázdné = složka
+stahování uživatele): sledují se jen soubory vzniklé po odeslání promptu, název musí vyhovovat
+`whisper.reply.filePattern` (výchozí `*.{xml,md,txt}`), soubor se přečte, až se přestane měnit
+(stahování po částech), a ověří stejně jako text ze schránky; soubory bez bloku `<whisper turn=…>` se
+ignorují (vidět v logu). Zkopírovaná odpověď z chatu (Ctrl+C) se bere dál jako záloha. Režim
+`clipboard` model o soubor nežádá a odpověď se kopíruje z chatu; složka se pak sleduje jen, když je
+`whisper.reply.watchDir` nastavená.
 
 **Screenshoty**: `<run probe="7" capture="4" window="Titulek">` spustí GUI a po 4 s ho vyfotí,
 `<screenshot/>` vyfotí obrazovku. Obrázky se přiloží k dalšímu promptu jako soubory ve schránce
@@ -239,8 +245,10 @@ pravidla do `.whisper/rules.md`, skilly do `.whisper/skills/`.
 - `whisper.mode` – `stateful` (chat drží historii, posílají se jen výsledky) nebo
   `stateless` (každý prompt je soběstačný).
 - `whisper.clipboard.watch` – automatické převzetí odpovědi ze schránky.
+- `whisper.reply.mode` – `file` (výchozí): model odpovídá souborem `whisper-reply-N.xml` ke stažení;
+  `clipboard`: textem v chatu.
 - `whisper.reply.watchDir`, `whisper.reply.filePattern` – složka a glob pro odpověď doručenou
-  jako nový soubor (viz výše); prázdná složka = jen schránka.
+  jako nový soubor (viz výše); prázdná složka = složka stahování v režimu `file`, jinak jen schránka.
 - `whisper.clipboard.fileAboveChars` – jen Windows: prompt delší než N znaků jde do
   schránky jako soubor `.txt` (vloží se jako příloha). Výchozí 0 = vždy text; na
   claude.ai se dlouhý text stejně sám změní v přílohu, takže to obvykle není třeba.

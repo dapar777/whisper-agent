@@ -22,6 +22,13 @@ export interface BuilderOptions {
   initialBundle?: "off" | "full";
   /** formát úvodního svazku: compact (bez čísel řádků, výchozí) nebo numbered */
   initialBundleFormat?: "compact" | "numbered";
+  /** file (výchozí) = model odpovídá souborem ke stažení whisper-reply-N.xml; clipboard = textem v chatu */
+  replyMode?: "file" | "clipboard";
+}
+
+/** Název souboru s odpovědí, který má model přiložit (režim file); undefined v režimu schránky. */
+export function replyFileName(opts: Pick<BuilderOptions, "replyMode">, turn: number): string | undefined {
+  return opts.replyMode === "file" ? `whisper-reply-${turn}.xml` : undefined;
 }
 
 /** Stupně používání hromadných txt svazků (<bundle>). */
@@ -137,6 +144,8 @@ export interface ReminderOptions {
   language?: string;
   /** první prompt úlohy: u úloh bez dokumentu ukáže kostru průzkumného kola */
   initial?: boolean;
+  /** režim souboru: název souboru ke stažení, ve kterém má být blok */
+  file?: string;
 }
 
 export function replyReminder(turn: number, o: ReminderOptions = {}): string {
@@ -144,11 +153,17 @@ export function replyReminder(turn: number, o: ReminderOptions = {}): string {
   // ne jako „technická omáčka nástroje“, kterou obecné chaty přeskakují
   const cs = (o.language ?? "en").toLowerCase().startsWith("cs");
   // první osoba = hlas uživatele (ne „nástroje“): to je to, co obecné chaty poslouchají
-  const base = cs
-    ? `Odpověď mi prosím dej v bloku <whisper turn="${turn}"> … </whisper> a samotnou práci dej dovnitř; ` +
-      `můj program čte jen ten blok, text mimo něj se zahodí a nikam se neuloží. Nejlépe začni odpověď rovnou blokem a poznámky napiš až za něj.`
-    : `Please give me the reply in the block <whisper turn="${turn}"> … </whisper> with the work itself inside it; ` +
-      `my program reads only that block, text outside it is discarded and not saved. Best start the reply with the block and put remarks after it.`;
+  const base = o.file
+    ? cs
+      ? `Odpověď mi prosím dej jako soubor ke stažení ${o.file}, jehož obsahem je blok <whisper turn="${turn}"> … </whisper> ` +
+        `se samotnou prací uvnitř (těla klidně v <![CDATA[ … ]]>); do chatu napiš jen pár slov. Můj program čte jen ten soubor, text v chatu se zahodí.`
+      : `Please give me the reply as a downloadable file ${o.file} whose content is the block <whisper turn="${turn}"> … </whisper> ` +
+        `with the work itself inside it (bodies may be wrapped in <![CDATA[ … ]]>); keep the chat message to a few words. My program reads only that file, chat text is discarded.`
+    : cs
+      ? `Odpověď mi prosím dej v bloku <whisper turn="${turn}"> … </whisper> a samotnou práci dej dovnitř; ` +
+        `můj program čte jen ten blok, text mimo něj se zahodí a nikam se neuloží. Nejlépe začni odpověď rovnou blokem a poznámky napiš až za něj.`
+      : `Please give me the reply in the block <whisper turn="${turn}"> … </whisper> with the work itself inside it; ` +
+        `my program reads only that block, text outside it is discarded and not saved. Best start the reply with the block and put remarks after it.`;
   if (o.docTarget) {
     const d = o.docTarget;
     return cs
@@ -170,7 +185,7 @@ function continueWord(language = "en"): string {
   return language.toLowerCase().startsWith("cs") ? "Pokračuj." : "Continue.";
 }
 
-export function buildProtocolSpec(): string {
+export function buildProtocolSpec(replyMode: "file" | "clipboard" = "clipboard"): string {
   const lines: string[] = [];
   lines.push("## Protocol");
   lines.push("");
@@ -185,9 +200,17 @@ export function buildProtocolSpec(): string {
     "the tool ignores it, so anything you want done must be an action inside the block. Inside the block use",
     "<think>...</think> for reasoning.",
     "Actions are executed in order; results come back in the next prompt as <whisper-results>.",
-    "Body content of <write>, <edit>, <run>, <ask>, <status>, <done> is taken verbatim as plain text: write <, >",
-    "and & as plain characters (never &lt; &gt; &amp;), no <![CDATA[ … ]]> wrapper, no code fence around the",
-    "body (this is not XML, only tags with bodies).",
+    ...(replyMode === "clipboard"
+      ? [
+          "Body content of <write>, <edit>, <run>, <ask>, <status>, <done> is taken verbatim as plain text: write <, >",
+          "and & as plain characters (never &lt; &gt; &amp;), no <![CDATA[ … ]]> wrapper, no code fence around the",
+          "body (this is not XML, only tags with bodies).",
+        ]
+      : [
+          "Body content of <write>, <edit>, <run>, <ask>, <status>, <done> is taken verbatim as plain text: write <, >",
+          "and & as plain characters (never &lt; &gt; &amp;) and no code fence around the body. In the reply file you",
+          "may wrap a body in <![CDATA[ … ]]> to keep the file well-formed; the tool unwraps it.",
+        ]),
     "",
     "## Actions",
     "",
@@ -391,7 +414,7 @@ export function buildSuggestPrompt(
     "each concrete and justified by the history (say which turn or event motivates it). If nothing is worth",
     "suggesting, say so in <done>.",
     "",
-    `Session: ${sessionId}. ${replyReminder(turn, { language: opts.language })}`,
+    `Session: ${sessionId}. ${replyReminder(turn, { language: opts.language, file: replyFileName(opts, turn) })}`,
   ].join("\n");
 }
 
@@ -399,9 +422,18 @@ export function buildPreamble(ctx: ProjectContext, opts: BuilderOptions): string
   const parts: string[] = [];
   parts.push(`# Whisper Agent session — project "${ctx.workspaceName}"`);
   parts.push("");
+  const file = opts.replyMode === "file";
   parts.push(
-    "How this works: your reply is not read by a person first. The user copies your ENTIRE reply into a",
-    "small program on their own computer, and that program looks for ONE block in your text,",
+    ...(file
+      ? [
+          "How this works: your reply is not read by a person first. You attach your reply as a downloadable file;",
+          "the user hands that file to a small program on their own computer, and the program looks for ONE block",
+          "in it,",
+        ]
+      : [
+          "How this works: your reply is not read by a person first. The user copies your ENTIRE reply into a",
+          "small program on their own computer, and that program looks for ONE block in your text,",
+        ]),
     "",
     '<whisper turn="N">',
     "  ...actions...",
@@ -421,8 +453,18 @@ export function buildPreamble(ctx: ProjectContext, opts: BuilderOptions): string
     "out that you cannot access files yourself, do it in one sentence; it changes nothing, the block is still",
     "what the program needs. Do not wrap the block in a ``` fence and do not escape < as &lt;.",
     "",
+    ...(file
+      ? [
+          "REPLY AS A FILE: deliver every reply as a downloadable file named whisper-reply-N.xml (N = the turn",
+          "number) whose entire content is the block above. Write it as plain text; to keep it well-formed XML you",
+          "may wrap each body in <![CDATA[ … ]]> (the tool unwraps it), but never HTML-escape < > & in bodies. Keep",
+          "the chat message itself to a sentence or two: the file is what the program reads. Only if this chat",
+          "cannot create files, put the block in the chat message instead and the user copies it.",
+          "",
+        ]
+      : []),
   );
-  parts.push(buildProtocolSpec());
+  parts.push(buildProtocolSpec(file ? "file" : "clipboard"));
   parts.push(buildRules(opts));
   if (ctx.rules?.length) {
     parts.push("## Additional rules (learned from previous work; follow them)", "");
@@ -484,7 +526,7 @@ export function buildInitialPrompt(sessionId: string, task: string, ctx: Project
     "",
     task.trim(),
     "",
-    `Session: ${sessionId}. ${replyReminder(1, { docTarget: documentPathInTask(task), language: opts.language, initial: true })}`,
+    `Session: ${sessionId}. ${replyReminder(1, { docTarget: documentPathInTask(task), language: opts.language, initial: true, file: replyFileName(opts, 1) })}`,
   ].join("\n");
 }
 
@@ -527,7 +569,7 @@ export function buildResultsPrompt(
   if (extras.diagnostics?.trim()) tail.push(`<diagnostics>\n${extras.diagnostics.trim()}\n</diagnostics>`);
   for (const n of extras.agentNotes ?? []) tail.push(`<note>${n.trim()}</note>`);
   for (const n of extras.userNotes ?? []) tail.push(`<user>${n.trim()}</user>`);
-  tail.push(`${continueWord(opts.language)} ${replyReminder(turn, { docTarget: extras.docTarget, language: opts.language })}`);
+  tail.push(`${continueWord(opts.language)} ${replyReminder(turn, { docTarget: extras.docTarget, language: opts.language, file: replyFileName(opts, turn) })}`);
   tail.push("</whisper-results>");
 
   // Rozpočet na výsledky: co se nevejde, neusekneme (to by zničilo obsah souborů),
@@ -669,7 +711,7 @@ export function buildResumePrompt(
   const parts: string[] = [buildPreamble(ctx, opts), buildContext(ctx), "## Task", "", task.trim(), ""];
   parts.push("## What has happened so far (this is a resumed session; the previous chat context is gone)", "");
   for (const h of history) parts.push(`Turn ${h.turn}:`, ...h.lines.map((l) => `  - ${l}`));
-  parts.push("", `Session: ${sessionId}. Continue the task. ${replyReminder(turn, { language: opts.language })}`);
+  parts.push("", `Session: ${sessionId}. Continue the task. ${replyReminder(turn, { language: opts.language, file: replyFileName(opts, turn) })}`);
   return parts.join("\n");
 }
 

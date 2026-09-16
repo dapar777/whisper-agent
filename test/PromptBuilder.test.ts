@@ -32,6 +32,21 @@ describe("buildInitialPrompt", () => {
     expect(parsed.actions).toHaveLength(examples.length);
   });
 
+  it("in file mode asks for a downloadable whisper-reply-N.xml and allows CDATA in it", () => {
+    const opts = { ...DEFAULT_OPTIONS, replyMode: "file" as const };
+    const p = buildInitialPrompt("s1", "Oprav test.", ctx, opts);
+    expect(p).toContain("You attach your reply as a downloadable file");
+    expect(p).toMatch(/REPLY AS A FILE: deliver every reply as a downloadable file named whisper-reply-N.xml/);
+    expect(p).toContain("may wrap a body in <![CDATA[ … ]]> to keep the file well-formed");
+    expect(p).toContain("Odpověď mi prosím dej jako soubor ke stažení whisper-reply-1.xml");
+    const next = buildResultsPrompt("s1", 2, [], {}, opts);
+    expect(next).toContain("Odpověď mi prosím dej jako soubor ke stažení whisper-reply-2.xml");
+    // režim schránky: bez zmínky o souboru, CDATA zakázané
+    const clip = buildInitialPrompt("s1", "Oprav test.", ctx, DEFAULT_OPTIONS);
+    expect(clip).not.toContain("whisper-reply-");
+    expect(clip).toContain("no <![CDATA[ … ]]> wrapper");
+  });
+
   it("frames the tool as the user's copy-paste, never as a capability of the model", () => {
     const p = buildInitialPrompt("s1", "t", ctx, DEFAULT_OPTIONS);
     expect(p).toContain("copies your ENTIRE reply into a");

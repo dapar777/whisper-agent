@@ -1,4 +1,5 @@
 import { execFile } from "child_process";
+import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { dragFiles as runDrag } from "./DragDrop";
@@ -223,15 +224,26 @@ export class ClipboardBridge implements vscode.Disposable {
     });
   }
 
+  /**
+   * Složka, ve které se čeká na odpověď jako soubor: `whisper.reply.watchDir`, jinak v režimu souboru
+   * složka stahování uživatele; prázdný řetězec = soubory se nesledují.
+   */
+  replyDir(): string {
+    const dir = cfg<string>("reply.watchDir", "").trim();
+    if (dir) return dir;
+    if (cfg<string>("reply.mode", "file") !== "file") return "";
+    return path.join(os.homedir(), "Downloads");
+  }
+
   /** Odpověď může přijít i jako nový soubor ve složce `whisper.reply.watchDir` (např. stažený z chatu). */
   private startFileWatch(): void {
     this.fileWatcher?.stop();
     this.fileWatcher = undefined;
-    const dir = cfg<string>("reply.watchDir", "").trim();
+    const dir = this.replyDir();
     if (!dir) return;
     this.fileWatcher = new FileReplyWatcher({
       dir,
-      pattern: cfg<string>("reply.filePattern", "*.{md,txt}"),
+      pattern: cfg<string>("reply.filePattern", "*.{xml,md,txt}"),
       pollMs: Math.max(500, cfg<number>("clipboard.pollMs", 500)),
       lastPrompt: this.lastPrompt,
       log: (l) => this.logEmitter.fire(l),

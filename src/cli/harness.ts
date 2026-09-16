@@ -47,6 +47,8 @@ async function main(): Promise<void> {
     bundleUsage: (rest.find((r) => r.startsWith("--bundle="))?.split("=")[1] as BundleUsage) ?? "encourage",
     // --full-bundle: celá codebase jako příloha úvodního promptu (whisper.bundle.initial = full)
     initialBundle: rest.includes("--full-bundle") ? "full" : "off",
+    // --reply=clipboard: odpověď textem v chatu; výchozí jako v extensionu = soubor whisper-reply-N.xml
+    replyMode: rest.includes("--reply=clipboard") ? "clipboard" : "file",
   });
 
   const load = async (): Promise<SessionData> => JSON.parse(await host.readFile(STATE)) as SessionData;

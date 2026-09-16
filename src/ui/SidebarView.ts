@@ -121,6 +121,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
             attachments: c.attachmentInfo(),
             historyItems: c.clipboard.lastHistoryItems,
             delivery: vscode.workspace.getConfiguration("whisper").get<string>("bundle.delivery", "history"),
+            reply: { mode: vscode.workspace.getConfiguration("whisper").get<string>("reply.mode", "file"), dir: c.clipboard.replyDir() },
           }
         : undefined,
       items: c.items.slice(-150),
@@ -415,7 +416,11 @@ export class SidebarView implements vscode.WebviewViewProvider {
       $("bannerTitle").textContent = (s.state === "waitingForReply" ? (sent ? "Čekám na odpověď modelu" : "Prompt je ve schránce, vložte ho do chatu") + " · kolo " + s.turn : title);
       if (s.state === "waitingForReply") {
         const att = s.attachments || [];
-        const base = (sent ? "Prompt byl vložen. Až model odpoví, zkopírujte odpověď (Ctrl+C), Whisper ji sám převezme." : "Vložte prompt do chatu (Ctrl+V); Whisper pozná, že byl vložen.") + " (" + kb(s.promptChars) + " znaků)";
+        const fileMode = s.reply && s.reply.mode === "file";
+        const after = fileMode
+          ? "Prompt byl vložen. Model má odpovědět souborem whisper-reply-" + s.turn + ".xml: stáhněte ho do " + (s.reply.dir || "složky stahování") + ", Whisper ho převezme (zkopírovanou odpověď Ctrl+C bere také)."
+          : "Prompt byl vložen. Až model odpoví, zkopírujte odpověď (Ctrl+C), Whisper ji sám převezme.";
+        const base = (sent ? after : "Vložte prompt do chatu (Ctrl+V); Whisper pozná, že byl vložen.") + " (" + kb(s.promptChars) + " znaků)";
         // přílohy (svazky souborů) musí být vidět, jinak uživatel neví, že má vložit i je
         $("bannerSub").innerHTML = esc(base) + (att.length
           ? '<div class="att">📎 ' + esc(att.length > 1 ? att.length + " přílohy" : "příloha") + ": " +
