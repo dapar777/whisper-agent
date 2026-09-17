@@ -158,6 +158,14 @@
           "type": "boolean", "default": false,
           "description": "Model smí průběžně navrhovat skilly, hooky, povolení a úkoly (<suggest>); návrhy se jen zobrazí ke schválení."
         },
+        "whisper.files.defaultEncoding": {
+          "type": "string", "enum": ["utf8", "utf8bom", "windows-1250", "windows-1252", "iso-8859-2"], "default": "utf8",
+          "description": "Kódování NOVÝCH souborů, které agent vytvoří. U existujících souborů se vždy zachová jejich vlastní kódování, BOM i konce řádků."
+        },
+        "whisper.files.fallbackEncoding": {
+          "type": "string", "enum": ["windows-1250", "windows-1252", "iso-8859-2", "utf8"], "default": "windows-1250",
+          "description": "Jak číst soubor, který není platný UTF-8 a nemá BOM (starší soubory z Windows). Výchozí windows-1250 kvůli češtině."
+        },
         "whisper.plan.auto": {
           "type": "boolean", "default": true,
           "description": "Model smí u větších úkolů sám založit a udržovat plán (checklist v .whisper/plan.md). /plan ho vynutí vždy."

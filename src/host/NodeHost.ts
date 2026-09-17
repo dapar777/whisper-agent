@@ -1,6 +1,7 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import { DEFAULT_EXCLUDES, globToRegExp, parseGitignoreNames } from "../protocol/text";
+import { applyEol, decodeBytes, DEFAULT_ENCODING, detectEncoding, encodeText, FileEncoding, normalizeEncoding, toLf } from "../tools/encoding";
 import { Host, HostPolicy, RunResult } from "./Host";
 import { captureScreenshot } from "./screenshot";
 import { spawnCommand } from "./spawn";
@@ -17,6 +18,12 @@ export interface NodeHostOptions {
   /** headless: potvrzovací dotazy se automaticky schválí (a zalogují) */
   autoConfirm?: boolean;
   log?: (line: string) => void;
+  /** kódování nových souborů (výchozí utf8) */
+  defaultEncoding?: string;
+  /** konce řádků nových souborů (výchozí podle systému) */
+  defaultEol?: "lf" | "crlf";
+  /** kódování, kterým se čte soubor, co není platný UTF-8 (výchozí windows-1250) */
+  fallbackEncoding?: string;
 }
 
 /** Host nad Node API – pro CLI harness a testy. */
@@ -25,6 +32,9 @@ export class NodeHost implements Host {
   readonly policy: HostPolicy;
   private readonly autoConfirm: boolean;
   private readonly logger: (line: string) => void;
+  private readonly defaultEncoding: string;
+  private readonly defaultEol: "lf" | "crlf";
+  private readonly fallbackEncoding: string;
 
   constructor(
     readonly rootPath: string,
@@ -35,6 +45,10 @@ export class NodeHost implements Host {
     this.policy = { ...DEFAULT_POLICY, ...opts.policy };
     this.autoConfirm = opts.autoConfirm ?? false;
     this.logger = opts.log ?? ((l) => console.log(l));
+    this.defaultEncoding = opts.defaultEncoding ?? "utf8";
+    // nové soubory: LF, pokud si projekt neřekne o CRLF (git core.autocrlf / .gitattributes řeší git sám)
+    this.defaultEol = opts.defaultEol ?? "lf";
+    this.fallbackEncoding = opts.fallbackEncoding ?? "windows-1250";
   }
 
   private abs(rel: string): string {
@@ -57,20 +71,34 @@ export class NodeHost implements Host {
     }
   }
 
-  readFile(rel: string): Promise<string> {
-    return fs.readFile(this.abs(rel), "utf8");
+  /** Přečte soubor v jeho kódování a vrátí text s LF (konce řádků se při zápisu vrátí zpět). */
+  async readFile(rel: string): Promise<string> {
+    const buf = await fs.readFile(this.abs(rel));
+    return toLf(decodeBytes(buf, detectEncoding(buf, this.fallbackEncoding).encoding));
   }
 
+  async fileEncoding(rel: string): Promise<FileEncoding> {
+    try {
+      return detectEncoding(await fs.readFile(this.abs(rel)), this.fallbackEncoding);
+    } catch {
+      return { ...DEFAULT_ENCODING, encoding: normalizeEncoding(this.defaultEncoding), eol: this.defaultEol };
+    }
+  }
+
+  /** Zapíše soubor v jeho kódování (u nového podle nastavení); BOM i konce řádků se zachovají. */
   async writeFile(rel: string, text: string): Promise<void> {
     const p = this.abs(rel);
+    const enc = await this.fileEncoding(rel);
     await fs.mkdir(path.dirname(p), { recursive: true });
-    await fs.writeFile(p, text, "utf8");
+    await fs.writeFile(p, encodeText(applyEol(text, enc.eol), enc));
   }
 
   async appendFile(rel: string, text: string): Promise<void> {
     const p = this.abs(rel);
+    const enc = await this.fileEncoding(rel);
     await fs.mkdir(path.dirname(p), { recursive: true });
-    await fs.appendFile(p, text, "utf8");
+    // BOM patří jen na začátek souboru, při připojování se nikdy nepíše znovu
+    await fs.appendFile(p, encodeText(applyEol(text, enc.eol), { ...enc, bom: false }));
   }
 
   deleteFile(rel: string): Promise<void> {

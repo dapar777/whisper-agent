@@ -256,7 +256,17 @@ holý blok na začátku odpovědi: plán, čtyři `<edit>` (všechny hunky proš
 `<ask>`. Rozhodující byla podle něj připomínka v první osobě v jazyce uživatele a předvedené selhání
 (`<protocol-error>` + `<note>`), ne anglická preambule.
 
-### 3.7 Odezva panelu
+### 3.7 Kódování a konce řádků
+
+`tools/encoding.ts` pozná z bajtů kódování souboru (BOM → platnost UTF-8 → jednobajtová stránka podle
+`whisper.files.fallbackEncoding`), BOM i převažující konce řádků. `Host.readFile` vrací text vždy
+v Unicode s LF, `Host.writeFile` ho převede zpět do zjištěného tvaru, takže se u existujícího souboru
+nikdy nezmění kódování, nezmizí BOM ani se nerozejdou konce řádků; `appendFile` BOM neopakuje. Nové
+soubory vznikají podle `whisper.files.defaultEncoding` s LF (CRLF si v gitu vyřeší `core.autocrlf`).
+Model o kódování ví dvakrát: pravidlo v preambuli („posílej prostý Unicode, kódování řeší nástroj“)
+a `encoding=` ve výsledku `<read>`/`<write>` u souborů, které nejsou prosté UTF-8 s LF.
+
+### 3.8 Odezva panelu
 
 Každý požadavek z panelu nese `reqId`; extension ho po vyřízení potvrdí zprávou `ack` (s případnou chybou).
 Panel do té doby ukazuje v horní liště „⏳ co dělá…“ a kliknuté tlačítko drží zamčené, po potvrzení krátce

@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { ApprovalService } from "../agent/Approvals";
 import { DEFAULT_EXCLUDES, parseGitignoreNames } from "../protocol/text";
-import { cfg, fileExists, readText, resolveInWorkspace, toRel, workspaceName, workspaceRoot, writeText } from "../util";
+import { FileEncoding } from "../tools/encoding";
+import { cfg, fileEncodingOf, fileExists, readText, resolveInWorkspace, toRel, workspaceName, workspaceRoot, writeText } from "../util";
 import { Host, HostPolicy, RunResult } from "./Host";
 import { captureScreenshot } from "./screenshot";
 import { spawnCommand } from "./spawn";
@@ -41,6 +42,10 @@ export class VsCodeHost implements Host {
 
   readFile(rel: string): Promise<string> {
     return readText(resolveInWorkspace(rel));
+  }
+
+  fileEncoding(rel: string): Promise<FileEncoding> {
+    return fileEncodingOf(resolveInWorkspace(rel));
   }
 
   writeFile(rel: string, text: string): Promise<void> {

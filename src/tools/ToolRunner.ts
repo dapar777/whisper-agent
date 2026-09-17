@@ -10,6 +10,7 @@ import { toolGrep } from "./grep";
 import { toolRun } from "./run";
 import { toolBundle } from "./bundle";
 import { checkWrittenFile, renderIssues } from "./check";
+import { describeEncodingEn } from "./encoding";
 import { takeScreenshot } from "./screenshot";
 
 /** Napojení na review změn (ve VS Code); headless běh ho nepotřebuje. */
@@ -199,9 +200,13 @@ export class ToolRunner {
       return { tool: "write", attrs: a.attrs, status: "denied", output: "The user declined this change." };
     }
     this.listener?.onWillChange(path, exists ? "modify" : "create", baseline, turn);
+    // kódování souboru se zachovává (u nového podle nastavení); model to má vědět, aby text posílal prostě
+    const enc = await this.host.fileEncoding(path);
     await this.host.writeFile(path, content);
     this.markChanged(outcome, path);
-    return { tool: "write", attrs: a.attrs, status: "ok", meta: { [exists ? "overwritten" : "created"]: `${content.split("\n").length} lines` } };
+    const meta: Record<string, string | number> = { [exists ? "overwritten" : "created"]: `${content.split("\n").length} lines` };
+    if (enc.encoding !== "utf8" || enc.bom || enc.eol !== "lf") meta.encoding = describeEncodingEn(enc);
+    return { tool: "write", attrs: a.attrs, status: "ok", meta };
   }
 
   private async edit(a: Action, turn: number, outcome: RunOutcome): Promise<ActionResult> {

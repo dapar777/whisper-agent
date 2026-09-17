@@ -2,6 +2,7 @@ import * as path from "path";
 import { Host } from "../host/Host";
 import { ActionResult } from "../protocol/schema";
 import { outline } from "../protocol/section";
+import { describeEncodingEn } from "./encoding";
 
 /** Předrenderovaný strom pro preambuli. */
 export async function renderTree(host: Host, maxEntries: number): Promise<string> {
@@ -56,7 +57,11 @@ export async function toolRead(host: Host, attrs: Record<string, string>): Promi
     .slice(from - 1, to)
     .map((l, i) => `${String(from + i).padStart(width)}| ${l}`)
     .join("\n");
-  return { tool: "read", attrs, status: "ok", output: out, meta: { totalLines: lines.length } };
+  // kódování se hlásí jen u souborů, které nejsou prosté UTF-8 s LF: model jinak píše výchozí tvar
+  const enc = await host.fileEncoding(attrs.path);
+  const meta: Record<string, string | number> = { totalLines: lines.length };
+  if (enc.encoding !== "utf8" || enc.bom || enc.eol !== "lf") meta.encoding = describeEncodingEn(enc);
+  return { tool: "read", attrs, status: "ok", output: out, meta };
 }
 
 export async function toolLs(host: Host, attrs: Record<string, string>): Promise<ActionResult> {

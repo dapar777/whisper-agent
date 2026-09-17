@@ -115,6 +115,13 @@ změna souboru vyvolá další kolo revize jen nad tím, co se od minula změnil
 je finální. Úloha bez změn souborů (vysvětlení, review) revizi nepotřebuje. V panelu revizi poznáte
 podle řádku „🔍 Revize N“.
 
+**Kódování souborů**: agent si u každého souboru pozná, jak je uložený, a při zápisu to zachová:
+kódování (UTF-8, UTF-8 s BOM, windows-1250, ISO-8859-2, UTF-16), značku BOM i konce řádků (CRLF/LF).
+Text pro model je vždy v Unicode s LF, takže model píše prostě `č`, `š`, `ž` a nemusí nic řešit;
+pokud soubor není prosté UTF-8 s LF, dostane to ve výsledku jako `encoding=`. Nové soubory vznikají
+podle `whisper.files.defaultEncoding` (výchozí UTF-8, LF). Soubor, který není platný UTF-8 a nemá BOM,
+se čte podle `whisper.files.fallbackEncoding` (výchozí windows-1250 kvůli starším českým souborům).
+
 **Přímý dialog** (`whisper.ask.direct`, výchozí zapnuto): model se smí ptát přímo v chatu
 a vy tam odpovíte nebo cokoli dopíšete; v dalším bloku to zapíše akcemi `<dialog>`, takže
 výměna je v průběhu i v transkriptu. Odpověď bez bloku akcí se bere jako otázka v chatu,
@@ -133,7 +140,10 @@ schránky jdou soubory `prompt-N.txt` + `bundle-N.txt` a jedno `Ctrl+V` v chatu 
 `pip install pywin32`; interpret nastavíte v `whisper.bundle.python`), stejný mechanismus jako
 klávesový drag & drop v mortalmanageru; před startem odlepí zaseknutý Esc/Enter, jinak by drag skončil
 hned. Tlačítko „Táhnout přílohu do chatu“ v panelu (nebo příkaz Whisper: Přetáhnout přílohu) to spustí
-znovu, v kterémkoli režimu doručení. Přepínač `📎` v horní liště panelu ukazuje aktuální doručení
+znovu, v kterémkoli režimu doručení. **Pole s názvem přílohy jde také chytit myší** a přetáhnout do
+okna chatu jako z Exploreru: webview soubor ven předat neumí, takže po stisknutí tlačítka a malém
+posunu agent naváže na už držené tlačítko skutečný OLE drag (`dragdrop.py --mouse`); pustíte ho, kde
+chcete, Esc zruší. Přepínač `📎` v horní liště panelu ukazuje aktuální doručení
 (historie / soubor / drag) a kliknutím zapne nebo vypne automatické tažení. Svazek je vždy soubor `*.txt` (jiné formáty chaty často odmítají);
 v názvu (`bundle-<kolo>-<n>-<yymmdd-HHMM>.txt`) i v první řádce má čas vzniku, panel u přílohy ukazuje
 její stáří a starý soubor označí. Prompt modelu říká, že svazek je přiložen, a co dělat, když ho nevidí.

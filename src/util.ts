@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as vscode from "vscode";
+import { applyEol, decodeBytes, detectEncoding, encodeText, FileEncoding, normalizeEncoding, toLf } from "./tools/encoding";
 
 export function workspaceRoot(): vscode.Uri {
   const f = vscode.workspace.workspaceFolders?.[0];
@@ -40,24 +41,44 @@ export async function fileExists(uri: vscode.Uri): Promise<boolean> {
   }
 }
 
+/** Jak je soubor uložený (kódování, BOM, konce řádků); neexistující soubor → výchozí nastavení. */
+export async function fileEncodingOf(uri: vscode.Uri): Promise<FileEncoding> {
+  const fallback = cfg<string>("files.fallbackEncoding", "windows-1250");
+  try {
+    return detectEncoding(Buffer.from(await vscode.workspace.fs.readFile(uri)), fallback);
+  } catch {
+    // nový soubor: konce řádků podle files.eol editoru, "auto" = LF (git si CRLF vyřeší sám)
+    const eolSetting = vscode.workspace.getConfiguration("files", uri).get<string>("eol", "auto");
+    return {
+      encoding: normalizeEncoding(cfg<string>("files.defaultEncoding", "utf8")),
+      bom: false,
+      eol: eolSetting === "\r\n" ? "crlf" : "lf",
+    };
+  }
+}
+
+/** Obsah souboru; kódování se pozná z bajtů, konce řádků se sjednotí na LF. */
 export async function readText(uri: vscode.Uri): Promise<string> {
   // preferuj otevřený (možná neuložený) dokument
   const open = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
-  if (open) return open.getText();
-  const bytes = await vscode.workspace.fs.readFile(uri);
-  return Buffer.from(bytes).toString("utf8");
+  if (open) return toLf(open.getText());
+  const buf = Buffer.from(await vscode.workspace.fs.readFile(uri));
+  return toLf(decodeBytes(buf, detectEncoding(buf, cfg<string>("files.fallbackEncoding", "windows-1250")).encoding));
 }
 
+/** Zápis; u existujícího souboru se zachová jeho kódování, BOM i konce řádků. */
 export async function writeText(uri: vscode.Uri, text: string): Promise<void> {
+  const enc = await fileEncodingOf(uri);
   const open = vscode.workspace.textDocuments.find((d) => d.uri.toString() === uri.toString());
   if (open) {
+    // otevřený dokument: konce řádků řídí editor (document.eol), obsah tedy vkládáme s LF
     const edit = new vscode.WorkspaceEdit();
     const full = new vscode.Range(open.positionAt(0), open.positionAt(open.getText().length));
-    edit.replace(uri, full, text);
+    edit.replace(uri, full, toLf(text));
     await vscode.workspace.applyEdit(edit);
     await open.save();
     return;
   }
   await vscode.workspace.fs.createDirectory(vscode.Uri.file(path.dirname(uri.fsPath)));
-  await vscode.workspace.fs.writeFile(uri, Buffer.from(text, "utf8"));
+  await vscode.workspace.fs.writeFile(uri, encodeText(applyEol(text, enc.eol), enc));
 }

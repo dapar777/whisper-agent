@@ -310,6 +310,8 @@ class _Keys:
 
 
 class _DropSource:
+    """Keyboard-driven source: Enter drops, Esc cancels (the mouse button is held for us)."""
+
     _public_methods_ = ["QueryContinueDrag", "GiveFeedback"]
     _com_interfaces_ = []                     # set to [IID_IDropSource] at run time
 
@@ -322,6 +324,35 @@ class _DropSource:
         if self.keys.enter:
             return DRAGDROP_S_DROP
         return S_OK
+
+    def GiveFeedback(self, effect: int) -> int:  # noqa: N802
+        return DRAGDROP_S_USEDEFAULTCURSORS
+
+
+class _MouseDropSource:
+    """Mouse-driven source: the user holds the button and drops by releasing it, exactly like a
+    drag started in Explorer. Esc still cancels. This is the standard IDropSource contract:
+    the drag ends when the button that started it goes up (MK_LBUTTON leaves key_state)."""
+
+    _public_methods_ = ["QueryContinueDrag", "GiveFeedback"]
+    _com_interfaces_ = []
+
+    MK_LBUTTON = 0x0001
+
+    def __init__(self, keys: _Keys) -> None:
+        self.keys = keys
+        self.saw_button = False
+
+    def QueryContinueDrag(self, escape_pressed: int, key_state: int) -> int:  # noqa: N802
+        if escape_pressed or self.keys.escape:
+            return DRAGDROP_S_CANCEL
+        down = bool(key_state & self.MK_LBUTTON)
+        if down:
+            self.saw_button = True
+            return S_OK
+        # button up: drop where the cursor is (but only after we saw it held, so a race at the
+        # very start does not end the drag before the user moves)
+        return DRAGDROP_S_DROP if self.saw_button else S_OK
 
     def GiveFeedback(self, effect: int) -> int:  # noqa: N802
         return DRAGDROP_S_USEDEFAULTCURSORS
@@ -457,9 +488,84 @@ def run_drag(paths: list[str], win: StatusWindow, auto_cancel: float = 0.0) -> s
     return "move" if effect & DROPEFFECT_MOVE else "copy"
 
 
+def run_mouse_drag(paths: list[str], timeout: float = 20.0) -> str:
+    """OLE drag řízený myší: uživatel drží levé tlačítko (stiskl ho v panelu), táhne kam chce a
+    pustí. Skript sám kurzorem ani tlačítkem nehýbe, jen dodá data, aby cílová aplikace dostala
+    skutečný soubor. Vrací "copy", "move" nebo "none". Když tlačítko není držené, drag nezačne."""
+    import pythoncom
+    from win32com.server import util
+    from win32com.shell import shell
+
+    try:
+        pythoncom.OleInitialize()
+    except Exception:
+        pass
+    _MouseDropSource._com_interfaces_ = [pythoncom.IID_IDropSource]
+    # počkat, až uživatel opravdu drží tlačítko (panel skript spouští hned po mousedown).
+    # Bere se jen bit 0x8000 = „právě teď dole“; bit 0 („stisknuto od minula“) by hlásil i starý klik,
+    # proto se hned na začátku jedním voláním vynuluje.
+    vk_left = 0x02 if _user32.GetSystemMetrics(23) else 0x01     # SM_SWAPBUTTON
+    _user32.GetAsyncKeyState(vk_left)
+    deadline = time.monotonic() + 2.0
+    while not (_user32.GetAsyncKeyState(vk_left) & 0x8000) and time.monotonic() < deadline:
+        time.sleep(0.01)
+    if not (_user32.GetAsyncKeyState(vk_left) & 0x8000):
+        print("dragdrop: left button is not held; the drag was not started", file=sys.stderr)
+        return "none"
+    pidls = []
+    for p in paths:
+        try:
+            pidls.append(shell.SHParseDisplayName(p, 0)[0])
+        except Exception as exc:
+            print(f"dragdrop: cannot parse {p}: {exc}", file=sys.stderr)
+    if not pidls:
+        return "none"
+    items = shell.SHCreateShellItemArrayFromIDLists(pidls)
+    data = items.BindToHandler(None, shell.BHID_DataObject, pythoncom.IID_IDataObject)
+    keys = _Keys()
+    source = util.wrap(_MouseDropSource(keys), pythoncom.IID_IDropSource)
+    # hlídač jen budí smyčku OLE a nechává Esc zrušit; kurzor nechává být (řídí ho uživatel)
+    watcher = _MouseWatcher(keys, timeout)
+    watcher.start()
+    try:
+        effect = pythoncom.DoDragDrop(data, source, DROPEFFECT_COPY | DROPEFFECT_MOVE)
+    finally:
+        watcher.stop.set()
+        watcher.join(1.0)
+    if isinstance(effect, tuple):
+        effect = effect[-1]
+    if not effect:
+        return "none"
+    return "move" if effect & DROPEFFECT_MOVE else "copy"
+
+
+class _MouseWatcher(threading.Thread):
+    """Drží smyčku OLE vzhůru a hlídá Esc; na rozdíl od _Watcher kurzorem nehýbe."""
+
+    def __init__(self, keys: _Keys, timeout: float) -> None:
+        super().__init__(daemon=True)
+        self._keys = keys
+        self._timeout = timeout
+        self.stop = threading.Event()
+
+    def run(self) -> None:
+        _user32.GetAsyncKeyState(VK_ESCAPE)
+        started = time.monotonic()
+        while not self.stop.is_set():
+            time.sleep(0.05)
+            if _user32.GetAsyncKeyState(VK_ESCAPE) & 0x8001:
+                self._keys.escape = True
+            # pojistka: kdyby drag uvázl (uživatel pustil mimo okno a OLE se neprobudilo)
+            if time.monotonic() - started > self._timeout:
+                self._keys.escape = True
+                return
+
+
 def main(argv: list[str]) -> int:
     args = argv[1:]
     check = "--check" in args                     # self-test: pywin32 + status window, no drag
+    mouse = "--mouse" in args                     # drag řízený myší (uživatel drží tlačítko sám)
+    args = [a for a in args if a != "--mouse"]
     auto_cancel = 0.0
     if "--auto-cancel" in args:                   # self-test: real drag, cancelled after N seconds
         i = args.index("--auto-cancel")
@@ -481,6 +587,11 @@ def main(argv: list[str]) -> int:
         print(f"dragdrop: pywin32 is required (pip install pywin32): {exc}", file=sys.stderr)
         return 2
     make_dpi_aware()
+    if mouse:
+        # myší tažení nemá vlastní okno: kurzor i tlačítko drží uživatel, stavový proužek by překážel
+        result = run_mouse_drag(paths)
+        print(result)
+        return 0 if result in ("copy", "move") else 1
     names = ", ".join(os.path.basename(p) for p in paths) or "(check)"
     win = StatusWindow(f"Whisper táhne: {names}\n"
                        "Alt+Tab do chatu (kurzor skočí do okna), šipky posunou, Enter pustí, Esc zruší")

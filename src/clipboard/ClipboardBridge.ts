@@ -149,7 +149,7 @@ export class ClipboardBridge implements vscode.Disposable {
    * Přetáhne soubory do chatu z klávesnice (scripts/dragdrop.py): uživatel Alt+Tabem přepne do chatu,
    * Enter pustí, Esc zruší. Výsledek a případné selhání (chybí Python/pywin32) hlásí do logu panelu.
    */
-  async dragFiles(files: string[]): Promise<void> {
+  async dragFiles(files: string[], mouse = false): Promise<void> {
     if (!files.length) return;
     if (this.dragging) {
       this.logEmitter.fire("Tažení už běží: Alt+Tab do chatu, Enter pustí, Esc zruší.");
@@ -157,12 +157,20 @@ export class ClipboardBridge implements vscode.Disposable {
     }
     this.dragging = true;
     const names = files.map((f) => path.basename(f)).join(", ");
-    this.notify(`Táhnu ${names}: Alt+Tab do chatu (kurzor skočí do okna), Enter pustí, Esc zruší. Pak Ctrl+V vloží prompt.`, "move");
-    vscode.window.setStatusBarMessage(`$(move) Whisper: táhnu ${names}: Alt+Tab do chatu, Enter pustí`, 30000);
+    if (mouse) {
+      // myší tažení: uživatel drží tlačítko, hlášku dáváme jen do stavového řádku, ať nepřekáží
+      vscode.window.setStatusBarMessage(`$(move) Whisper: táhněte ${names} do okna chatu a pusťte tlačítko`, 30000);
+    } else {
+      this.notify(`Táhnu ${names}: Alt+Tab do chatu (kurzor skočí do okna), Enter pustí, Esc zruší. Pak Ctrl+V vloží prompt.`, "move");
+      vscode.window.setStatusBarMessage(`$(move) Whisper: táhnu ${names}: Alt+Tab do chatu, Enter pustí`, 30000);
+    }
     try {
-      const r = await runDrag(this.scriptsDir, files, cfg<string>("bundle.python", "python"));
+      const r = await runDrag(this.scriptsDir, files, cfg<string>("bundle.python", "python"), mouse);
       if (r.result === "copy" || r.result === "move") this.notify(`${names}: puštěno do okna.`, "check");
-      else if (r.result === "none") this.notify(`Tažení ${names} zrušeno (Esc). Znovu tlačítkem „Táhnout přílohu do chatu“, nebo soubor přiložte ručně z .whisper/out/.`, "undo");
+      else if (r.result === "none") {
+        if (!mouse) this.notify(`Tažení ${names} zrušeno (Esc). Znovu tlačítkem „Táhnout přílohu do chatu“, nebo soubor přiložte ručně z .whisper/out/.`, "undo");
+        else vscode.window.setStatusBarMessage("Whisper: tažení zrušeno", 3000);
+      }
       else
         this.notify(
           `Tažení se nepovedlo (${r.detail === "ENOENT" ? "python nenalezen; nastavte whisper.bundle.python" : r.detail}). ` +

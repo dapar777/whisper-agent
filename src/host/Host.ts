@@ -1,3 +1,5 @@
+import { FileEncoding } from "../tools/encoding";
+
 /**
  * Rozhraní k prostředí, ve kterém agent běží. Implementace: VsCodeHost
  * (extension) a NodeHost (headless CLI / testy). Nástroje pracují jen s ním.
@@ -35,8 +37,12 @@ export interface Host {
   /** Ověří, že relativní cesta leží ve workspace; jinak vyhodí chybu. */
   assertInside(rel: string): void;
   exists(rel: string): Promise<boolean>;
+  /** Obsah souboru; kódování se pozná z bajtů, konce řádků se sjednotí na LF. */
   readFile(rel: string): Promise<string>;
+  /** Zápis; u existujícího souboru se zachová jeho kódování, BOM i konce řádků. */
   writeFile(rel: string, text: string): Promise<void>;
+  /** Jak je soubor uložený (kódování, BOM, konce řádků); u neexistujícího výchozí nastavení. */
+  fileEncoding(rel: string): Promise<FileEncoding>;
   /** Připojí text na konec souboru (založí ho, pokud chybí). */
   appendFile(rel: string, text: string): Promise<void>;
   deleteFile(rel: string): Promise<void>;

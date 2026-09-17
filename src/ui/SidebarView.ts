@@ -74,6 +74,9 @@ export class SidebarView implements vscode.WebviewViewProvider {
         return c.copyPromptAgain();
       case "drag":
         return c.dragAttachments();
+      case "dragMouse":
+        // uživatel chytil pole s přílohou myší; tlačítko drží on, jen mu dodáme soubor
+        return c.dragAttachments(m.path, true);
       case "setDelivery": {
         // přepínač v horní liště: drag = svazky a přílohy se hned táhnou do chatu; jinak historie schránky
         const value = m.text === "drag" || m.text === "file" ? m.text : "history";
@@ -368,6 +371,11 @@ export class SidebarView implements vscode.WebviewViewProvider {
   a.floc:hover { color: var(--vscode-textLink-activeForeground, var(--info)); border-bottom-style: solid; }
   code a.floc { color: inherit; }
   .ref { font-family: var(--mono); background: color-mix(in srgb, var(--info) 18%, var(--card)); border: 1px solid color-mix(in srgb, var(--info) 40%, var(--border)); border-radius: 4px; padding: 0 4px; }
+  /* pole s přílohou: dá se chytit myší a přetáhnout do okna chatu (skutečný soubor přes dragdrop.py) */
+  .ref.draggable { cursor: grab; user-select: none; display: inline-flex; align-items: center; gap: 2px; }
+  .ref.draggable:hover { background: color-mix(in srgb, var(--info) 30%, var(--card)); border-color: var(--info); }
+  .ref.draggable:active, .ref.draggable.dragging { cursor: grabbing; background: color-mix(in srgb, var(--accent) 25%, var(--card)); border-color: var(--accent); }
+  .ref.draggable .ic { width: 11px; height: 11px; opacity: 0.7; }
   .askhint { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; font-size: 12.5px; }
   .askhint b { color: var(--accent); white-space: nowrap; }
   .askhint .q { color: var(--fg); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
@@ -441,7 +449,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
   const $ = (id) => document.getElementById(id);
   // Každý požadavek dostane reqId; do potvrzení (ack) z extensionu panel ukazuje „⏳ …“ v horní liště a
   // kliknuté tlačítko je zamčené, aby bylo hned vidět, že se něco děje, a nešlo to spustit dvakrát.
-  const LABELS = { send: "Odesílám zadání", copyAgain: "Kopíruji prompt do schránky", showPrompt: "Otevírám prompt", pasteClip: "Beru odpověď ze schránky", resend: "Skládám celý kontext", correction: "Posílám opravný prompt", suggest: "Připravuji návrhy", drag: "Spouštím tažení přílohy", interrupt: "Přerušuji akce", stop: "Ruším úkol", undo: "Vracím poslední kolo", approve: "Zpracovávám rozhodnutí", suggestion: "Ukládám návrh", suggestionsAll: "Ukládám návrhy", setDelivery: "Měním doručení svazků", setMode: "Měním schvalování", autoAll: "Přepínám na auto", transcript: "Otevírám záznam", reloadSkills: "Načítám skilly", settings: "Otevírám nastavení", reviewNext: "Otevírám změny", acceptAll: "Přijímám změny", rejectAll: "Zamítám změny", acceptFile: "Přijímám soubor", rejectFile: "Zamítám soubor", openDiff: "Otevírám diff", addPattern: "Ukládám výjimku", removePattern: "Mažu výjimku" };
+  const LABELS = { send: "Odesílám zadání", copyAgain: "Kopíruji prompt do schránky", showPrompt: "Otevírám prompt", pasteClip: "Beru odpověď ze schránky", resend: "Skládám celý kontext", correction: "Posílám opravný prompt", suggest: "Připravuji návrhy", drag: "Spouštím tažení přílohy", dragMouse: "Táhněte do okna chatu a pusťte", interrupt: "Přerušuji akce", stop: "Ruším úkol", undo: "Vracím poslední kolo", approve: "Zpracovávám rozhodnutí", suggestion: "Ukládám návrh", suggestionsAll: "Ukládám návrhy", setDelivery: "Měním doručení svazků", setMode: "Měním schvalování", autoAll: "Přepínám na auto", transcript: "Otevírám záznam", reloadSkills: "Načítám skilly", settings: "Otevírám nastavení", reviewNext: "Otevírám změny", acceptAll: "Přijímám změny", rejectAll: "Zamítám změny", acceptFile: "Přijímám soubor", rejectFile: "Zamítám soubor", openDiff: "Otevírám diff", addPattern: "Ukládám výjimku", removePattern: "Mažu výjimku" };
   let reqSeq = 0;
   const pending = new Map();
   let lastClicked = null;
@@ -460,6 +468,35 @@ export class SidebarView implements vscode.WebviewViewProvider {
     showBusy(ic("loader", "spin") + " " + esc(label) + "…");
     vscode.postMessage({ type, reqId, ...(extra || {}) });
   }
+  /**
+   * Pole s přílohou jde chytit myší: webview soubor ven předat neumí, takže po stisknutí tlačítka
+   * a malém posunu (aby prosté kliknutí drag nespustilo) o to požádáme extension. Ta spustí
+   * dragdrop.py --mouse, který na už držené tlačítko naváže skutečný OLE drag se souborem;
+   * uživatel dotáhne do okna chatu a pustí. Vlastní HTML5 drag se ruší, aby se nepletl.
+   */
+  function armDrag(el) {
+    el.ondragstart = (e) => e.preventDefault();
+    el.onmousedown = (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const startX = e.clientX, startY = e.clientY;
+      let armed = false;
+      const move = (ev) => {
+        if (armed || Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) < 4) return;
+        armed = true;
+        el.classList.add("dragging");
+        send("dragMouse", { path: el.dataset.drag });
+      };
+      const up = () => {
+        document.removeEventListener("mousemove", move);
+        document.removeEventListener("mouseup", up);
+        setTimeout(() => el.classList.remove("dragging"), 400);
+      };
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    };
+  }
+
   function finish(reqId, error) {
     const p = pending.get(reqId); if (!p) return;
     pending.delete(reqId); clearTimeout(p.timer);
@@ -591,11 +628,11 @@ export class SidebarView implements vscode.WebviewViewProvider {
         // přílohy (svazky souborů) musí být vidět, jinak uživatel neví, že má vložit i je
         $("bannerSub").innerHTML = esc(base) + (att.length
           ? '<div class="att">' + ic("paperclip") + esc(att.length > 1 ? att.length + " přílohy" : "příloha") + ": " +
-            att.map((a) => '<span class="ref">' + esc(String(a.name || a)) + "</span>" +
+            att.map((a) => '<span class="ref draggable" data-drag="' + esc(String(a.path || a.name || a)) + '" title="Přetáhněte myší do okna chatu (nebo klikněte a použijte tlačítko níže)">' + ic("move") + esc(String(a.name || a)) + "</span>" +
               (a.chars ? ' <span class="sub">(' + kb(a.chars) + (a.ageMin != null ? ", " + (a.ageMin < 1 ? "právě teď" : a.ageMin < 60 ? "před " + a.ageMin + " min" : "před " + Math.round(a.ageMin / 60) + " h") : "") + ")</span>" : "") +
               (a.ageMin > 30 ? ' <span class="badge" title="Soubor je starší než půl hodiny: nový svazek se v tomto kole nevytvořil">' + ic("alert") + 'starý soubor</span>' : "")).join(", ") +
             (s.delivery === "drag"
-              ? '<br><span class="sub">Příloha se táhne z klávesnice: <b>Alt+Tab</b> do chatu (kurzor skočí do okna), <b>Enter</b> pustí, Esc zruší; pak Ctrl+V vloží prompt.</span>'
+              ? '<br><span class="sub">Přílohu chyťte myší a přetáhněte do okna chatu, nebo ji táhněte z klávesnice: <b>Alt+Tab</b> do chatu (kurzor skočí do okna), <b>Enter</b> pustí, Esc zruší; pak Ctrl+V vloží prompt.</span>'
               : s.historyItems && s.historyItems.length
                 ? '<br><span class="sub">Vložte Ctrl+V (prompt) a pak svazek z historie schránky: <b>Win+V</b>.</span>'
                 : '<br><span class="sub">Přiloženo jako soubor ve schránce; jedno Ctrl+V vloží prompt i přílohu.</span>') + "</div>"
@@ -629,6 +666,7 @@ export class SidebarView implements vscode.WebviewViewProvider {
     $("stream").innerHTML = parts.join("");
     for (const x of chat.querySelectorAll("[data-act]")) x.onclick = onAct;
     for (const a of chat.querySelectorAll("a.floc")) a.onclick = (e) => { e.preventDefault(); send("openFile", { path: a.dataset.path, text: a.dataset.line || "", always: a.dataset.col || "" }); };
+    for (const d of chat.querySelectorAll("[data-drag]")) armDrag(d);
     // banner i karty jsou uvnitř #chat a dorenderují se níž, proto rolujeme až po jejich vykreslení
     if (stick || state.items.length !== lastCount) requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; });
     lastCount = state.items.length;

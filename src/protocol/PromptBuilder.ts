@@ -269,6 +269,13 @@ export function buildRules(opts: BuilderOptions): string {
       "turn all files, searches and listings you will plausibly need (typically 5-15 read/grep/ls actions,\n" +
       "or one <bundle> for a whole module or codebase). Never ask for files one at a time.",
     "Prefer <edit> with small, unique SEARCH blocks over <write> for existing files. Use <write> only for new\nfiles or complete rewrites.",
+    "TEXT AND ENCODING: send every body as plain Unicode text with LF line breaks and real accented characters\n" +
+      "(č, š, ž, ü, é…), never escape sequences (\\u010d), HTML entities or transliteration. The tool writes each\n" +
+      "file in the encoding that file already has (UTF-8, UTF-8 with BOM, windows-1250…), keeps its BOM and its\n" +
+      "CRLF/LF line endings, and converts your text to it; a result says so under encoding= when the file is not\n" +
+      "plain UTF-8 with LF. So never change a file's encoding on purpose, never add or remove a BOM, and never\n" +
+      "retype accented text as ASCII: if the project's existing files write Czech without diacritics, follow that\n" +
+      "style, but that is a style choice, not an encoding one.",
     "DOCUMENTS ARE FILES: when the deliverable is a document (proposal, spec, README, any .md/.txt), put its\n" +
       'COMPLETE text inside <write path="docs/name.md"> in the block, never as chat text: text outside the block is\n' +
       "discarded and the file would not exist. The body is verbatim: no HTML escaping, no outer ``` fence; it may\n" +

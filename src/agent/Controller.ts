@@ -455,11 +455,15 @@ export class Controller implements vscode.Disposable {
     void this.loop(prompt, false, attachments);
   }
 
-  /** Přetáhne přílohy čekajícího promptu (svazky, obrázky) do chatu z klávesnice (Alt+Tab, Enter). */
-  async dragAttachments(): Promise<void> {
-    const rels = this.session.current?.pendingAttachments ?? [];
+  /**
+   * Přetáhne přílohy čekajícího promptu (svazky, obrázky) do chatu. Bez parametrů jde o tažení
+   * z klávesnice (Alt+Tab, Enter), s `only` a `mouse` o jeden soubor tažený myší z panelu.
+   */
+  async dragAttachments(only?: string, mouse = false): Promise<void> {
+    const all = this.session.current?.pendingAttachments ?? [];
+    const rels = only ? (all.includes(only) ? [only] : []) : all;
     if (!rels.length) return void vscode.window.setStatusBarMessage("Whisper: aktuální prompt nemá žádnou přílohu.", 4000);
-    await this.clipboard.dragFiles(rels.map((r) => vscode.Uri.joinPath(workspaceRoot(), r).fsPath));
+    await this.clipboard.dragFiles(rels.map((r) => vscode.Uri.joinPath(workspaceRoot(), r).fsPath), mouse);
   }
 
   submitReply(text: string): void {
