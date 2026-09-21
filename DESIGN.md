@@ -266,7 +266,29 @@ soubory vznikají podle `whisper.files.defaultEncoding` s LF (CRLF si v gitu vy�
 Model o kódování ví dvakrát: pravidlo v preambuli („posílej prostý Unicode, kódování řeší nástroj“)
 a `encoding=` ve výsledku `<read>`/`<write>` u souborů, které nejsou prosté UTF-8 s LF.
 
-### 3.8 Odezva panelu
+### 3.8 Tažení souborů do chatu
+
+Webview soubor ven z VS Code předat neumí (microsoft/vscode#164 otevřené, #111092 mimo rozsah), proto
+tažení dělá `scripts/dragdrop.py` přes pywin32 `DoDragDrop` se shellovým data objektem (CF_HDROP, cíl
+dostane skutečný soubor). Běží jako **trvalý pomocník** (`--serve`, JSON řádky na stdin/stdout,
+`DragHelper` v `clipboard/DragDrop.ts`): start Pythonu a pywin32 trvá přes sekundu a myší tažení to
+nesnese, uživatel tlačítko drží jen chvíli po stisknutí v panelu. Pomocník se předehřeje, jakmile má
+prompt přílohu. Pasti, které stály hodiny: (1) jen okno v popředí smí zachytit myš, jinak OLE nevidí
+kurzor nad cizími okny a cíl nikdy nedostane drop, proto se u klávesového tažení stavový proužek
+aktivuje syntetickým stiskem a `SetForegroundWindow`, u myšího se vstupní fronta připojí k frontě
+okna v popředí (`AttachThreadInput`); (2) zdroj, který čeká na stisk, jenž už proběhl, drží capture
+navždy, proto myší zdroj bez drženého tlačítka tažení hned zruší; (3) syntetický stisk bez uvolnění
+nebo neodstraněný hook zablokují drag & drop v celém systému, proto je všechno v `finally`, každé
+tažení má hlídače s pevným limitem a před klávesovým tažením se případný zbylý stisk uvolní;
+(4) zrušení přes Esc vidí OLE jen tehdy, když dostává vstup, jinak `QueryContinueDrag` nikdy nezavolá,
+proto `abort_drag` pošle vláknu zprávu (OLE ji bere jako ztrátu capture) a když tažení neskončí ani do
+1,5 s, pomocník uvolní tlačítko a sám se ukončí (kód 3; OS tím capture uvolní, extension ho příště
+spustí znovu); (5) na zamčeném počítači je v popředí LockApp: žádné popředí k připojení, žádný vstup,
+proto pomocník tažení odmítne hned se zdůvodněním místo visení, a testy tažení se přeskočí; (6) zombie
+pomocník s rozdělaným tažením vrací všem ostatním `DoDragDrop` v systému E_FAIL, proto pomocník hlídá
+proces rodiče (`--parent`) a skončí s ním.
+
+### 3.9 Odezva panelu
 
 Každý požadavek z panelu nese `reqId`; extension ho po vyřízení potvrdí zprávou `ack` (s případnou chybou).
 Panel do té doby ukazuje v horní liště „⏳ co dělá…“ a kliknuté tlačítko drží zamčené, po potvrzení krátce

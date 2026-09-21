@@ -2,7 +2,7 @@ import { execFile } from "child_process";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import { dragFiles as runDrag } from "./DragDrop";
+import { DragHelper } from "./DragDrop";
 import { isOwnPrompt, looksLikeReply, normalizeClipboard } from "../protocol/replyDetect";
 import { classifyProse } from "../protocol/PromptBuilder";
 import { cfg, readText, workspaceName, workspaceRoot, writeText } from "../util";
@@ -67,7 +67,29 @@ export class ClipboardBridge implements vscode.Disposable {
   lastHistoryItems: string[] = [];
   /** složka se skripty extensionu (dragdrop.py); nastaví extension.ts */
   scriptsDir = "";
-  private dragging = false;
+  /** trvale běžící pomocník pro tažení (spouští se líně nebo předem, když prompt má přílohu) */
+  private helper: DragHelper | undefined;
+
+  private dragHelper(): DragHelper {
+    if (!this.helper) {
+      this.helper = new DragHelper(this.scriptsDir, () => cfg<string>("bundle.python", "python"), (l) => this.logEmitter.fire(l));
+    }
+    return this.helper;
+  }
+
+  /** Spustí pomocníka pro tažení na pozadí, aby první tažení začalo hned (start Pythonu trvá přes sekundu). */
+  warmUpDrag(): void {
+    if (process.platform === "win32") this.dragHelper().warmUp();
+  }
+
+  /** Zruší tažení, které právě běží. */
+  cancelDrag(): void {
+    this.helper?.cancel();
+  }
+
+  get dragging(): boolean {
+    return !!this.helper?.busy;
+  }
   /** hlášky pro log v panelu (sledování složky s odpověďmi) */
   readonly onDidLog = this.logEmitter.event;
   private readonly noticeEmitter = new vscode.EventEmitter<{ text: string; icon?: string }>();
@@ -94,6 +116,8 @@ export class ClipboardBridge implements vscode.Disposable {
     const textual = attachments.filter((a) => /\.(txt|md)$/i.test(a));
     const binary = attachments.filter((a) => !/\.(txt|md)$/i.test(a));
     const delivery = cfg<"history" | "file" | "drag">("bundle.delivery", "history");
+    // prompt s přílohou: uživatel ji nejspíš potáhne, ať pomocník už běží a tažení začne hned
+    if (attachments.length) this.warmUpDrag();
     if (delivery === "drag" && attachments.length && process.platform === "win32") {
       // prompt jde jako text; přílohy (svazky i obrázky) se táhnou do chatu z klávesnice (dragdrop.py)
       this.lastHistoryItems = [];
@@ -151,11 +175,13 @@ export class ClipboardBridge implements vscode.Disposable {
    */
   async dragFiles(files: string[], mouse = false): Promise<void> {
     if (!files.length) return;
-    if (this.dragging) {
-      this.logEmitter.fire("Tažení už běží: Alt+Tab do chatu, Enter pustí, Esc zruší.");
+    const helper = this.dragHelper();
+    if (helper.busy) {
+      // druhé kliknutí během tažení = zrušit; jinak by se na sebe požadavky vršily
+      helper.cancel();
+      this.logEmitter.fire("Tažení už běželo, ruším ho.");
       return;
     }
-    this.dragging = true;
     const names = files.map((f) => path.basename(f)).join(", ");
     if (mouse) {
       // myší tažení: uživatel drží tlačítko, hlášku dáváme jen do stavového řádku, ať nepřekáží
@@ -164,22 +190,23 @@ export class ClipboardBridge implements vscode.Disposable {
       this.notify(`Táhnu ${names}: Alt+Tab do chatu (kurzor skočí do okna), Enter pustí, Esc zruší. Pak Ctrl+V vloží prompt.`, "move");
       vscode.window.setStatusBarMessage(`$(move) Whisper: táhnu ${names}: Alt+Tab do chatu, Enter pustí`, 30000);
     }
-    try {
-      const r = await runDrag(this.scriptsDir, files, cfg<string>("bundle.python", "python"), mouse);
-      if (r.result === "copy" || r.result === "move") this.notify(`${names}: puštěno do okna.`, "check");
-      else if (r.result === "none") {
-        if (!mouse) this.notify(`Tažení ${names} zrušeno (Esc). Znovu tlačítkem „Táhnout přílohu do chatu“, nebo soubor přiložte ručně z .whisper/out/.`, "undo");
-        else vscode.window.setStatusBarMessage("Whisper: tažení zrušeno", 3000);
-      }
-      else
-        this.notify(
-          `Tažení se nepovedlo (${r.detail === "ENOENT" ? "python nenalezen; nastavte whisper.bundle.python" : r.detail}). ` +
-            `Vyžaduje Python s pywin32 (pip install pywin32). Přílohu přiložte ručně: ${names}.`,
-          "alert",
-        );
-    } finally {
-      this.dragging = false;
-    }
+    const t0 = Date.now();
+    const r = await helper.drag(files, mouse ? "mouse" : "keyboard");
+    this.logEmitter.fire(`Tažení (${mouse ? "myš" : "klávesnice"}) skončilo: ${r.result}${r.detail ? ` (${r.detail})` : ""}, ${Date.now() - t0} ms celkem${r.ms !== undefined ? `, ${r.ms} ms v pomocníkovi` : ""}.`);
+    if (r.result === "copy" || r.result === "move") this.notify(`${names}: puštěno do okna.`, "check");
+    else if (r.result === "none") {
+      if (!mouse) this.notify(`Tažení ${names} zrušeno (Esc). Znovu tlačítkem „Táhnout přílohu do chatu“, nebo soubor přiložte ručně z .whisper/out/.`, "undo");
+      else vscode.window.setStatusBarMessage("Whisper: tažení nezačalo (tlačítko už nebylo držené) nebo bylo zrušeno", 4000);
+    } else if (r.detail === "busy") {
+      this.logEmitter.fire("Tažení už běží.");
+    } else if (/locked|foreground/.test(r.detail)) {
+      this.notify(`Tažení teď nejde: ${r.detail}. Odemkněte počítač a zkuste to znovu.`, "alert");
+    } else
+      this.notify(
+        `Tažení se nepovedlo (${r.detail === "ENOENT" ? "python nenalezen; nastavte whisper.bundle.python" : r.detail}). ` +
+          `Vyžaduje Python s pywin32 (pip install pywin32). Přílohu přiložte ručně: ${names}.`,
+        "alert",
+      );
   }
 
   /** Absolutní cesta přílohy; textový soubor bez přípony .txt se zkopíruje do .txt (chat jiné formáty nebere). */
@@ -328,6 +355,7 @@ export class ClipboardBridge implements vscode.Disposable {
 
   dispose(): void {
     this.cancelWait(new Error("disposed"));
+    this.helper?.dispose(); // cancel + EOF: pomocník uklidí stisk i hook a skončí
     this.owner.dispose();
     this.otherEmitter.dispose();
     this.logEmitter.dispose();

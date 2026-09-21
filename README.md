@@ -142,8 +142,12 @@ klávesový drag & drop v mortalmanageru; před startem odlepí zaseknutý Esc/E
 hned. Tlačítko „Táhnout přílohu do chatu“ v panelu (nebo příkaz Whisper: Přetáhnout přílohu) to spustí
 znovu, v kterémkoli režimu doručení. **Pole s názvem přílohy jde také chytit myší** a přetáhnout do
 okna chatu jako z Exploreru: webview soubor ven předat neumí, takže po stisknutí tlačítka a malém
-posunu agent naváže na už držené tlačítko skutečný OLE drag (`dragdrop.py --mouse`); pustíte ho, kde
-chcete, Esc zruší. Přepínač `📎` v horní liště panelu ukazuje aktuální doručení
+posunu agent naváže na už držené tlačítko skutečný OLE drag; pustíte ho, kde chcete, Esc zruší.
+Tažení obsluhuje **trvale běžící pomocník** (`dragdrop.py --serve`), který se spustí na pozadí, jakmile
+má prompt přílohu, takže samotné tažení začne do několika milisekund; start Pythonu s pywin32 se platí
+jen jednou. Každé tažení má pevný limit (myš 30 s, klávesnice 2 min), po kterém se samo zruší, a vždy po
+sobě uklidí syntetický stisk tlačítka i hook klávesnice, takže nemůže zablokovat drag & drop jinde.
+Druhé kliknutí na tlačítko během tažení ho zruší. Přepínač `📎` v horní liště panelu ukazuje aktuální doručení
 (historie / soubor / drag) a kliknutím zapne nebo vypne automatické tažení. Svazek je vždy soubor `*.txt` (jiné formáty chaty často odmítají);
 v názvu (`bundle-<kolo>-<n>-<yymmdd-HHMM>.txt`) i v první řádce má čas vzniku, panel u přílohy ukazuje
 její stáří a starý soubor označí. Prompt modelu říká, že svazek je přiložen, a co dělat, když ho nevidí.
