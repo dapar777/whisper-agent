@@ -1,3 +1,6 @@
+// Tyto testy skutečně táhnou: instalují low-level hook klávesnice, drží tlačítko myši a hýbou
+// kurzorem. Souběžně s ostatními testy (spouštění procesů, hooky) to kolidovalo, proto je `npm test`
+// spouští až po ostatních, samostatně.
 import { afterAll, describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "child_process";
 import * as fs from "fs";
@@ -35,6 +38,14 @@ describe("dragdrop.py", () => {
     const r = spawnSync("python", [SCRIPT, "--check"], { windowsHide: true, encoding: "utf8", timeout: 30000 });
     expect(r.stdout.trim()).toBe("ok");
     expect(r.status).toBe(0);
+  });
+
+  it.skipIf(!canDrag)("--selftest-mouse: a mouse-driven drag ends when the button is released", () => {
+    // vlastní okno bez drop targetu: tažení proběhne, ale nikam se nic nepustí
+    const r = spawnSync("python", [SCRIPT, "--selftest-mouse"], { windowsHide: true, encoding: "utf8", timeout: 30000 });
+    expect(r.stdout.trim(), r.stderr).toBe("ok");
+    expect(r.status).toBe(0);
+    expect(buttonDown()).toBe(false);
   });
 });
 

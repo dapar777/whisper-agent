@@ -872,10 +872,57 @@ def serve() -> int:
         print(json.dumps({"result": result, "detail": detail, "id": req.get("id"), "ms": int((time.monotonic() - started) * 1000)}), flush=True)
 
 
+# ------------------------------------------------------------------ self-tests
+
+def selftest_mouse(path: str) -> bool:
+    """Mouse-driven drag without a user: our own strip (no drop target registered, so nothing is
+    ever dropped anywhere), cursor over it, synthetic press, mouse_drag(), synthetic release after
+    a second. Passes when DoDragDrop ran about that long and ended on the release."""
+    win = StatusWindow("Whisper: samotest myšího tažení")
+    try:
+        win.pump(100)
+        c = window_center(win.hwnd)
+        if not c:
+            return False
+        move_cursor(*c)
+        time.sleep(0.05)
+        _send_mouse(MOUSEEVENTF_LEFTDOWN)
+        win.pump(150)
+
+        def release() -> None:
+            time.sleep(1.0)
+            move_cursor(c[0] + 5, c[1] + 5)
+            time.sleep(0.05)
+            _send_mouse(MOUSEEVENTF_LEFTUP)
+        threading.Thread(target=release, daemon=True).start()
+        started = time.monotonic()
+        result = mouse_drag([path], _Keys())
+        elapsed = time.monotonic() - started
+        log(f"selftest-mouse: {result} after {elapsed:.2f}s")
+        return result == "none" and 0.8 <= elapsed <= 3.0
+    finally:
+        if button_down():
+            _send_mouse(MOUSEEVENTF_LEFTUP)
+        win.destroy()
+
+
 # ------------------------------------------------------------------ CLI
 
 def main(argv: list[str]) -> int:
     args = argv[1:]
+    if "--selftest-mouse" in args:
+        err = check_pywin32()
+        if err:
+            print(f"dragdrop: {err}", file=sys.stderr)
+            return 2
+        if session_locked():
+            print(f"dragdrop: {session_locked()}", file=sys.stderr)
+            return 2
+        make_dpi_aware()
+        ole_init()
+        ok = selftest_mouse(os.path.abspath(__file__))
+        print("ok" if ok else "failed")
+        return 0 if ok else 1
     if "--serve" in args:
         try:
             return serve()
