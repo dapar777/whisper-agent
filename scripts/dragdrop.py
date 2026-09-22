@@ -145,6 +145,10 @@ _user32.BeginPaint.restype = wt.HDC
 _user32.BeginPaint.argtypes = [wt.HWND, ctypes.POINTER(_PAINTSTRUCT)]
 _user32.EndPaint.argtypes = [wt.HWND, ctypes.POINTER(_PAINTSTRUCT)]
 _user32.DrawTextW.argtypes = [wt.HDC, wt.LPCWSTR, ctypes.c_int, ctypes.POINTER(wt.RECT), wt.UINT]
+_gdi32.SetBkMode.argtypes = [wt.HDC, ctypes.c_int]
+_gdi32.SetBkMode.restype = ctypes.c_int
+_user32.WindowFromPoint.restype = wt.HWND
+_user32.WindowFromPoint.argtypes = [wt.POINT]
 _user32.ShowWindow.argtypes = [wt.HWND, ctypes.c_int]
 _user32.DestroyWindow.argtypes = [wt.HWND]
 _user32.UpdateWindow.argtypes = [wt.HWND]
@@ -325,6 +329,29 @@ def root_window(hwnd: int) -> int:
 def window_thread(hwnd: int) -> int:
     pid = wt.DWORD()
     return int(_user32.GetWindowThreadProcessId(wt.HWND(hwnd), ctypes.byref(pid)))
+
+
+def window_under_cursor() -> int:
+    """Top-level window under the mouse cursor (0 when none)."""
+    x, y = cursor_pos()
+    _user32.WindowFromPoint.restype = wt.HWND
+    hwnd = int(_user32.WindowFromPoint(wt.POINT(x, y)) or 0)
+    return root_window(hwnd) if hwnd else 0
+
+
+def settle_foreground(result: str, own_hwnd: int, previous_fg: int) -> None:
+    """Who has the focus after the drag. Dropped: the window the file landed in stays in front (the
+    user pastes the prompt there next); our strip must never pull the focus back to VS Code.
+    Cancelled: only if the focus is on our (vanishing) strip does it go back where it was."""
+    fg = foreground_window()
+    if result in ("copy", "move"):
+        target = window_under_cursor()
+        if target and target != own_hwnd and fg != target:
+            _user32.SetForegroundWindow(wt.HWND(target))
+            log(f"drop target {target} brought to front")
+        return
+    if own_hwnd and fg == own_hwnd and previous_fg:
+        _user32.SetForegroundWindow(wt.HWND(previous_fg))
 
 
 def window_center(hwnd: int) -> tuple[int, int] | None:
@@ -713,9 +740,10 @@ def keyboard_drag(paths: list[str], keys: _Keys, auto_cancel: float = 0.0) -> st
                 time.sleep(0.02)
                 move_cursor(*end_pos)
         release_stuck_keys()
+        # focus decided before the strip vanishes (destroying a foreground window hands focus to whoever
+        # Windows picks, typically the previous app = VS Code, which is exactly what must not happen)
+        settle_foreground(_effect_to_result(effect), win.hwnd, lease.fg)
         win.destroy()
-        if lease.fg and foreground_window() != lease.fg:
-            _user32.SetForegroundWindow(wt.HWND(lease.fg))
     return _effect_to_result(effect)
 
 
@@ -751,6 +779,7 @@ def mouse_drag(paths: list[str], keys: _Keys) -> str:
         finally:
             _drag_active.clear()
             watchdog.stop.set()
+            settle_foreground(_effect_to_result(effect), 0, 0)
     return _effect_to_result(effect)
 
 
