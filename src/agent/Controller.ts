@@ -533,6 +533,7 @@ export class Controller implements vscode.Disposable {
     this.items = events.filter((e) => e.session === s.id && e.kind !== "prompt");
     this.logLine(`↻ Obnoveno sezení ${s.id}, kolo ${s.turn}, stav ${s.state}.`);
     await engine.initialPrompt(s, await engine.gatherContext());
+    if (s.pendingAttachments?.length) this.clipboard.warmUpDrag(); // příloha čeká: ať tažení začne hned
     if (s.state === "waitingForReply" && s.pendingPrompt) void this.loop(s.pendingPrompt, true);
     this.changeEmitter.fire();
   }

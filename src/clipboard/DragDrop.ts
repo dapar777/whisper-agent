@@ -27,6 +27,8 @@ export class DragHelper {
   private pending: { id: number; resolve: (o: DragOutcome) => void } | undefined;
   private seq = 0;
   private startedWith = "";
+  /** proč se pomocník naposledy nespustil (do hlášky pro uživatele) */
+  private lastError = "";
 
   constructor(
     private readonly scriptsDir: string,
@@ -54,6 +56,7 @@ export class DragHelper {
       const done = (ok: boolean, why?: string) => {
         if (settled) return;
         settled = true;
+        this.lastError = ok ? "" : why ?? "";
         if (!ok) this.log(`Pomocník pro tažení se nespustil${why ? ` (${why})` : ""}.`);
         else this.log(`Pomocník pro tažení připraven za ${Date.now() - t0} ms (${cmd}).`);
         resolve(ok);
@@ -73,7 +76,9 @@ export class DragHelper {
           this.failPending("error", e.message);
         });
         child.on("exit", (code) => {
-          if (this.child === child) this.child = undefined;
+          // po ENOENT může 'exit' přijít i za dítě, které už nahradil spouštěč py: to nesmí shodit start
+          if (this.child !== child) return;
+          this.child = undefined;
           done(false, `skončil s kódem ${code}`);
           // kód 3 = pomocník sám ukončil zaseknuté tažení (tlačítko uvolnil); pro uživatele je to zrušené tažení
           if (code === 3) this.failPending("none", "tažení se nedalo ukončit, pomocník se restartoval");
@@ -113,7 +118,9 @@ export class DragHelper {
   /** Jedno tažení; když už jedno běží, vrátí error "busy". */
   async drag(files: string[], mode: DragMode, autoCancel = 0): Promise<DragOutcome> {
     if (this.pending) return { result: "error", detail: "busy" };
-    if (!(await this.ensure()) || !this.child?.stdin) return { result: "error", detail: this.startedWith ? "helper" : "ENOENT" };
+    if (!(await this.ensure()) || !this.child?.stdin) {
+      return { result: "error", detail: /ENOENT/.test(this.lastError) ? "ENOENT" : this.lastError || "pomocník neběží" };
+    }
     const id = ++this.seq;
     return new Promise<DragOutcome>((resolve) => {
       this.pending = { id, resolve };
