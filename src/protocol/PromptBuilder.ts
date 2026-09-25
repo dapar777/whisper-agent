@@ -16,6 +16,9 @@ export interface BuilderOptions {
   directDialog?: boolean;
   /** jak silně pobízet model k <bundle> místo mnoha <read> */
   bundleUsage?: BundleUsage;
+  /** limit velikosti svazku / jednoho souboru ve znacích; 0 nebo nezadáno = bez limitu */
+  bundleMaxChars?: number;
+  bundleMaxFileChars?: number;
   /** první <done> po změnách souborů vyvolá revizi (svazek změněných souborů), finální je <done reviewed="true"> */
   reviewBeforeDone?: boolean;
   /** "full" = k úvodnímu promptu (a k novému kontextu) přiložit svazek s celou codebase */

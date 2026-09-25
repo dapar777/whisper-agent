@@ -89,6 +89,14 @@
           ],
           "description": "Jak předat svazek souborů (<bundle>) do chatu. Svazek je vždy soubor *.txt v .whisper/out/ (v názvu i hlavičce má čas vzniku)."
         },
+        "whisper.bundle.maxChars": {
+          "type": "number", "default": 0,
+          "description": "Limit velikosti svazku (<bundle>) ve znacích; 0 = bez limitu (výchozí). Co se nevejde, svazek vypíše jako přeskočené. Model si může menší limit říct atributem maxChars."
+        },
+        "whisper.bundle.maxFileChars": {
+          "type": "number", "default": 0,
+          "description": "Limit velikosti jednoho souboru ve svazku ve znacích; 0 = bez limitu (výchozí). Binární soubory se vynechávají vždy."
+        },
         "whisper.bundle.initial": {
           "type": "string", "enum": ["off", "full"], "default": "off",
           "enumDescriptions": [

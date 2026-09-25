@@ -88,3 +88,36 @@ describe("toolBundle", () => {
     expect(parseReply('<whisper turn="1"><bundle paths="src/**/*.ts, package.json"/></whisper>').actions[0].tool).toBe("bundle");
   });
 });
+
+describe("bundle limits", () => {
+  it("has no limit by default: a file over the old 200k cap is included whole", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "whisper-bundle-"));
+    fs.mkdirSync(path.join(root, "src"), { recursive: true });
+    fs.writeFileSync(path.join(root, "src/big.txt"), "x".repeat(300_000) + "\n", "utf8");
+    fs.writeFileSync(path.join(root, "src/small.txt"), "y\n", "utf8");
+    const r = await toolBundle(host(root), { paths: "src" }, 1, 0);
+    expect(r.status).toBe("ok");
+    expect(r.meta?.files).toBe(2);
+    expect(r.output).not.toContain("Skipped");
+    expect(fs.readFileSync(path.join(root, String(r.meta?.file)), "utf8")).toContain("x".repeat(300_000));
+  });
+
+  it("honours the configured limits and the model's own maxChars attribute", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "whisper-bundle-"));
+    fs.mkdirSync(path.join(root, "src"), { recursive: true });
+    fs.writeFileSync(path.join(root, "src/a.txt"), "a".repeat(30_000) + "\n", "utf8");
+    fs.writeFileSync(path.join(root, "src/b.txt"), "b".repeat(30_000) + "\n", "utf8");
+    fs.writeFileSync(path.join(root, "src/c.txt"), "c".repeat(1_000) + "\n", "utf8");
+    // nastavení: maxFileChars vyřadí velké soubory
+    const perFile = await toolBundle(host(root), { paths: "src" }, 1, 0, { maxFileChars: 10_000 });
+    expect(perFile.meta?.files).toBe(1);
+    expect(perFile.output).toMatch(/Skipped:[\s\S]*src\/a.txt \(30001 chars, too large/);
+    // nastavení: maxChars omezí celek (a.txt se vejde, b.txt už ne, malý c.txt ano)
+    const total = await toolBundle(host(root), { paths: "src" }, 1, 0, { maxChars: 40_000 });
+    expect(total.meta?.files).toBe(2);
+    expect(total.output).toMatch(/src\/b.txt \(bundle limit 40000 chars reached\)/);
+    // atribut modelu má přednost, ale nejmíň 20 000
+    const attr = await toolBundle(host(root), { paths: "src", maxChars: "5000" }, 1, 0, { maxChars: 40_000 });
+    expect(attr.output).toMatch(/bundle limit 20000 chars reached/);
+  });
+});

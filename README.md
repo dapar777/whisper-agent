@@ -161,6 +161,10 @@ a úvodního obsahu (hunky čísla řádků nepotřebují a strom projektu je v 
 jako běžný `<bundle>`. Prompt modelu řekne, že má číst přílohu místo vyžadování souborů po kolech; doručení
 se řídí `whisper.bundle.delivery` (historie schránky, soubor, nebo tažení z klávesnice).
 
+Svazek nemá ve výchozím stavu žádný limit velikosti (vynechávají se jen binární soubory);
+`whisper.bundle.maxChars` a `whisper.bundle.maxFileChars` limit zapnou, model si menší může říct atributem
+`maxChars`. Co se nevejde, svazek vypíše jako přeskočené.
+
 Jak silně se model k svazkům pobízí, řídí `whisper.bundle.usage`. Ke každému stupni patří jiný text
 vložený do pravidel v promptu:
 

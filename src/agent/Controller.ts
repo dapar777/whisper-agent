@@ -725,6 +725,8 @@ export class Controller implements vscode.Disposable {
         continuousSuggest: cfg("suggest.continuous", false),
         directDialog: cfg("ask.direct", true),
         bundleUsage: cfg<BundleUsage>("bundle.usage", "encourage"),
+        bundleMaxChars: cfg<number>("bundle.maxChars", 0),
+        bundleMaxFileChars: cfg<number>("bundle.maxFileChars", 0),
         reviewBeforeDone: cfg("review.beforeDone", true),
         initialBundle: cfg<"off" | "full">("bundle.initial", "off"),
         initialBundleFormat: cfg<"compact" | "numbered">("bundle.initialFormat", "compact"),

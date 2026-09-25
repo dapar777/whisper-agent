@@ -8,7 +8,7 @@ import { toolDiagnostics } from "./diagnostics";
 import { toolGlob, toolLs, toolRead } from "./fs";
 import { toolGrep } from "./grep";
 import { toolRun } from "./run";
-import { toolBundle } from "./bundle";
+import { BundleOptions, toolBundle } from "./bundle";
 import { checkWrittenFile, renderIssues } from "./check";
 import { describeEncodingEn } from "./encoding";
 import { takeScreenshot } from "./screenshot";
@@ -67,6 +67,8 @@ export class ToolRunner {
     private readonly host: Host,
     private readonly resultMaxChars: number,
     private readonly listener?: ChangeListener,
+    /** limity svazků z nastavení (whisper.bundle.maxChars / maxFileChars); výchozí bez limitu */
+    private readonly bundleOptions: BundleOptions = {},
   ) {}
 
   async runAll(actions: Action[], turn: number, ctx: RunContext = {}): Promise<RunOutcome> {
@@ -118,7 +120,7 @@ export class ToolRunner {
         case "screenshot":
           return await takeScreenshot(this.host, turn, a.index, { window: a.attrs.window, name: a.attrs.name });
         case "bundle":
-          return await toolBundle(this.host, a.attrs, turn, a.index);
+          return await toolBundle(this.host, a.attrs, turn, a.index, this.bundleOptions);
         case "plan":
           return await this.plan(a, outcome);
         case "suggest":

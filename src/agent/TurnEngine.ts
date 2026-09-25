@@ -85,7 +85,7 @@ export class TurnEngine {
     private readonly opts: EngineOptions,
     listener?: ChangeListener,
   ) {
-    this.runner = new ToolRunner(host, opts.resultMaxChars, listener);
+    this.runner = new ToolRunner(host, opts.resultMaxChars, listener, { maxChars: opts.bundleMaxChars, maxFileChars: opts.bundleMaxFileChars });
   }
 
   /**
@@ -485,7 +485,8 @@ export class TurnEngine {
     session.changedSinceReview = [];
     let bundle: ActionResult | undefined;
     if (files.length) {
-      const b = await toolBundle(this.host, { paths: files.join(", ") }, turn, 90 + round);
+      // revize chce celé znění všech změněných souborů, žádný limit
+      const b = await toolBundle(this.host, { paths: files.join(", ") }, turn, 90 + round, { unlimited: true });
       if (b.status === "ok") bundle = b;
     }
     const attached = bundle

@@ -118,8 +118,8 @@ export const TOOLS: ToolDef[] = [
     hasBody: false,
     attrs: [
       { name: "paths", required: false, doc: 'comma-separated paths, directories or globs, e.g. "src/**/*.ts, tests, README.md"' },
-      { name: "all", required: false, doc: '"true" = the whole codebase (respects .gitignore; binaries and huge files skipped)' },
-      { name: "maxChars", required: false, doc: "size limit of the bundle (default 400000)" },
+      { name: "all", required: false, doc: '"true" = the whole codebase (respects .gitignore; binaries skipped)' },
+      { name: "maxChars", required: false, doc: "optional size limit of the bundle in characters; by default there is none, so normally omit it" },
     ],
     doc:
       "Get MANY files at once as ONE structured text file (numbered lines, one section per file) instead of many <read>s. " +

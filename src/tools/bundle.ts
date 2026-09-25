@@ -5,13 +5,15 @@ import { globToRegExp } from "../protocol/text";
 /** První řádek svazku; podle něj se pozná, že text ve schránce je náš (ne odpověď modelu). */
 export const BUNDLE_MARKER = "# Whisper Agent bundle";
 
-const DEFAULT_MAX_CHARS = 400_000;
-const MAX_FILE_CHARS = 200_000;
 const BINARY_EXT = /\.(png|jpe?g|gif|bmp|ico|webp|svgz|pdf|zip|gz|tgz|7z|rar|jar|exe|dll|so|dylib|bin|dat|db|sqlite|woff2?|ttf|otf|eot|mp[34]|wav|ogg|mov|avi|lock)$/i;
 
 export interface BundleOptions {
   /** bez limitu velikosti svazku i jednotlivých souborů (full bundle: patří tam všechno) */
   unlimited?: boolean;
+  /** limit velikosti svazku ve znacích (whisper.bundle.maxChars); 0 nebo nezadáno = bez limitu */
+  maxChars?: number;
+  /** limit velikosti jednoho souboru ve znacích (whisper.bundle.maxFileChars); 0 nebo nezadáno = bez limitu */
+  maxFileChars?: number;
   /** compact = bez čísel řádků, koncových značek a úvodního obsahu (úspornější; hunky čísla nepotřebují) */
   format?: "numbered" | "compact";
 }
@@ -37,8 +39,11 @@ interface Picked {
  */
 export async function toolBundle(host: Host, attrs: Record<string, string>, turn: number, index: number, opts: BundleOptions = {}): Promise<ActionResult> {
   const format = opts.format ?? "numbered";
-  const maxChars = opts.unlimited ? Infinity : Math.min(2_000_000, Math.max(20_000, Number(attrs.maxChars) || DEFAULT_MAX_CHARS));
-  const maxFileChars = opts.unlimited ? Infinity : MAX_FILE_CHARS;
+  // limity: výchozí žádné (model se do nich dřív pořád trefoval a psal o tom do promptu); model si může
+  // limit svazku říct atributem maxChars, uživatel nastavením whisper.bundle.maxChars / maxFileChars
+  const requested = Number(attrs.maxChars) || 0;
+  const maxChars = opts.unlimited ? Infinity : requested ? Math.max(20_000, requested) : opts.maxChars || Infinity;
+  const maxFileChars = opts.unlimited ? Infinity : opts.maxFileChars || Infinity;
   const all = attrs.all === "true" || attrs.all === "1";
   const patterns = (attrs.paths ?? "")
     .split(/[\n,]/)
