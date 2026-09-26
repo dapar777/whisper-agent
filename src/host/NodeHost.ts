@@ -51,6 +51,10 @@ export class NodeHost implements Host {
     this.fallbackEncoding = opts.fallbackEncoding ?? "windows-1250";
   }
 
+  get folders(): { name: string; path: string }[] {
+    return [{ name: this.workspaceName, path: this.rootPath }];
+  }
+
   private abs(rel: string): string {
     this.assertInside(rel);
     return path.resolve(this.rootPath, rel.replace(/\\/g, "/").replace(/^\.\//, ""));

@@ -32,6 +32,8 @@ export interface HostPolicy {
 
 export interface Host {
   readonly workspaceName: string;
+  /** složky workspace; víc než jedna = multi-root, relativní cesty pak začínají názvem složky */
+  readonly folders: { name: string; path: string }[];
   readonly policy: HostPolicy;
 
   /** Ověří, že relativní cesta leží ve workspace; jinak vyhodí chybu. */

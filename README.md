@@ -115,6 +115,13 @@ změna souboru vyvolá další kolo revize jen nad tím, co se od minula změnil
 je finální. Úloha bez změn souborů (vysvětlení, review) revizi nepotřebuje. V panelu revizi poznáte
 podle řádku „🔍 Revize N“.
 
+**Workspace s více složkami** (multi-root): každá složka je pro agenta adresář nejvyšší úrovně
+pojmenovaný podle svého názvu ve workspace, takže cesty vypadají `app/src/x.ts`, `lib/README.md`, a to
+ve stromu, ve čtení, zápisu, grepu i ve svazcích. Prompt obsahuje seznam složek s jejich umístěním
+a pravidlo, že holá cesta bez názvu složky se odmítne (aby model nehádal). `<run>` bez `cwd` běží
+v první složce, do ostatních se dá `cwd="název"`. `WHISPER.md` se čte z každé složky zvlášť, stav
+agenta (`.whisper/`) a záznam průběhu jsou v první složce. Jediná složka zůstává bez předpony.
+
 **Kódování souborů**: agent si u každého souboru pozná, jak je uložený, a při zápisu to zachová:
 kódování (UTF-8, UTF-8 s BOM, windows-1250, ISO-8859-2, UTF-16), značku BOM i konce řádků (CRLF/LF).
 Text pro model je vždy v Unicode s LF, takže model píše prostě `č`, `š`, `ž` a nemusí nic řešit;

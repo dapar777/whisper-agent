@@ -58,6 +58,8 @@ export interface ProjectContext {
   refs?: string;
   /** svazek s celou codebase přiložený k tomuto promptu (whisper.bundle.initial = full) */
   initialBundle?: { file: string; files: number; chars: number; skipped: number; format?: "compact" | "numbered" };
+  /** multi-root workspace: složky, jejichž názvem cesty začínají */
+  roots?: { name: string; path: string }[];
   /** co už je nakonfigurované (pro návrhy, aby se neopakovaly) */
   existing?: {
     hooks?: string[];
@@ -491,7 +493,20 @@ export function buildPreamble(ctx: ProjectContext, opts: BuilderOptions): string
 }
 
 export function buildContext(ctx: ProjectContext): string {
-  const parts: string[] = ["## Project tree", "", ctx.tree.trim(), ""];
+  const parts: string[] = [];
+  if (ctx.roots && ctx.roots.length > 1) {
+    parts.push(
+      "## Workspace folders",
+      "",
+      `This workspace has ${ctx.roots.length} root folders. EVERY path starts with the folder name, in <read>, <write>,`,
+      "<edit>, <grep glob=…>, <bundle paths=…> and <run cwd=…> alike:",
+      ...ctx.roots.map((r) => `- ${r.name}/ → ${r.path}`),
+      `A bare path like src/x.ts is rejected. <run> without cwd runs in ${ctx.roots[0].name}/; give cwd="${ctx.roots[1].name}"`,
+      "(or a deeper folder) for the others. <bundle all=\"true\"/> and <ls/> cover all folders; <ls path=\"name\"/> one of them.",
+      "",
+    );
+  }
+  parts.push("## Project tree", "", ctx.tree.trim(), "");
   if (ctx.initialBundle) {
     const b = ctx.initialBundle;
     parts.push(

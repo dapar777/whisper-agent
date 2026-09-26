@@ -159,7 +159,11 @@ export class ToolRunner {
 
   private guard(path: string): string | null {
     this.host.assertInside(path);
-    if (isProtectedPath(path, this.host.policy)) return `Path "${path}" is protected by policy; changes are not allowed.`;
+    // multi-root: vzory jako ".env" nebo ".git/**" platí uvnitř každé složky, tedy i pro "app/.env"
+    const insideFolder = this.host.folders.length > 1 ? path.replace(/\\/g, "/").split("/").slice(1).join("/") : "";
+    if (isProtectedPath(path, this.host.policy) || (insideFolder && isProtectedPath(insideFolder, this.host.policy))) {
+      return `Path "${path}" is protected by policy; changes are not allowed.`;
+    }
     return null;
   }
 

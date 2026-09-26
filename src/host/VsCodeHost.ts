@@ -1,8 +1,9 @@
 import * as vscode from "vscode";
 import { ApprovalService } from "../agent/Approvals";
 import { DEFAULT_EXCLUDES, parseGitignoreNames } from "../protocol/text";
+import { splitGlob } from "../protocol/roots";
 import { FileEncoding } from "../tools/encoding";
-import { cfg, fileEncodingOf, fileExists, readText, resolveInWorkspace, toRel, workspaceName, workspaceRoot, writeText } from "../util";
+import { cfg, fileEncodingOf, fileExists, readText, resolveInWorkspace, tryToRel, workspaceFolders, workspaceName, workspaceRoot, writeText } from "../util";
 import { Host, HostPolicy, RunResult } from "./Host";
 import { captureScreenshot } from "./screenshot";
 import { spawnCommand } from "./spawn";
@@ -62,16 +63,32 @@ export class VsCodeHost implements Host {
     await vscode.workspace.fs.delete(resolveInWorkspace(rel));
   }
 
+  get folders(): { name: string; path: string }[] {
+    return workspaceFolders().map((f) => ({ name: f.name, path: f.fsPath }));
+  }
+
+  /**
+   * Soubory ve všech složkách workspace. Multi-root: glob začínající názvem složky hledá jen v ní,
+   * jinak ve všech; každá složka má vlastní .gitignore; výsledky nesou předponu složky.
+   */
   async listFiles(glob: string, max = 5000): Promise<string[]> {
-    const names = new Set(DEFAULT_EXCLUDES);
-    try {
-      parseGitignoreNames(await readText(vscode.Uri.joinPath(workspaceRoot(), ".gitignore"))).forEach((n) => names.add(n));
-    } catch {
-      /* bez .gitignore */
+    const out: string[] = [];
+    for (const { folder, glob: g } of splitGlob(glob, workspaceFolders())) {
+      const names = new Set(DEFAULT_EXCLUDES);
+      try {
+        parseGitignoreNames(await readText(vscode.Uri.joinPath(vscode.Uri.file(folder.fsPath), ".gitignore"))).forEach((n) => names.add(n));
+      } catch {
+        /* bez .gitignore */
+      }
+      const exclude = `{${[...names].map((n) => `**/${n}/**,**/${n}`).join(",")}}`;
+      const uris = await vscode.workspace.findFiles(new vscode.RelativePattern(vscode.Uri.file(folder.fsPath), g), exclude, max - out.length);
+      for (const u of uris) {
+        const rel = tryToRel(u);
+        if (rel) out.push(rel);
+      }
+      if (out.length >= max) break;
     }
-    const exclude = `{${[...names].map((n) => `**/${n}/**,**/${n}`).join(",")}}`;
-    const uris = await vscode.workspace.findFiles(glob, exclude, max);
-    return uris.map(toRel).sort();
+    return out.sort();
   }
 
   run(command: string, cwdRel: string, timeoutMs: number, probeMs?: number, signal?: AbortSignal): Promise<RunResult> {
@@ -80,15 +97,14 @@ export class VsCodeHost implements Host {
   }
 
   async diagnostics(onlyRel?: string, maxLines = 60): Promise<string> {
-    const root = workspaceRoot().fsPath.toLowerCase();
     const only = onlyRel ? resolveInWorkspace(onlyRel).fsPath.toLowerCase() : null;
     const lines: string[] = [];
     let total = 0;
     for (const [uri, diags] of vscode.languages.getDiagnostics()) {
-      if (uri.scheme !== "file" || !uri.fsPath.toLowerCase().startsWith(root)) continue;
+      const rel = tryToRel(uri); // jen soubory z některé složky workspace
+      if (!rel) continue;
       if (only && uri.fsPath.toLowerCase() !== only) continue;
       if (/[\\/](node_modules|\.git|dist|out)[\\/]/.test(uri.fsPath)) continue;
-      const rel = toRel(uri);
       for (const d of diags) {
         if (d.severity > vscode.DiagnosticSeverity.Warning) continue;
         total++;

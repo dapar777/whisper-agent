@@ -102,7 +102,17 @@ export class TurnEngine {
 
   async gatherContext(active?: ProjectContext["active"], skills?: ProjectContext["skills"]): Promise<ProjectContext> {
     const ctx: ProjectContext = { workspaceName: this.host.workspaceName, tree: await renderTree(this.host, this.opts.treeMaxEntries) };
-    if (await this.host.exists("WHISPER.md")) ctx.instructions = await this.host.readFile("WHISPER.md");
+    const folders = this.host.folders;
+    if (folders.length > 1) {
+      // multi-root: model musí vědět, že cesty začínají názvem složky; instrukce z každé složky zvlášť
+      ctx.roots = folders;
+      const parts: string[] = [];
+      for (const f of folders) {
+        const rel = `${f.name}/WHISPER.md`;
+        if (await this.host.exists(rel)) parts.push(`### ${rel}\n\n${(await this.host.readFile(rel)).trim()}`);
+      }
+      if (parts.length) ctx.instructions = parts.join("\n\n");
+    } else if (await this.host.exists("WHISPER.md")) ctx.instructions = await this.host.readFile("WHISPER.md");
     if (await this.host.exists(PLAN_FILE)) ctx.plan = await this.host.readFile(PLAN_FILE);
     // globální chování agenta (~/.whisper) + projektová pravidla (.whisper/rules.md)
     const globalInstructions = readGlobalInstructions();

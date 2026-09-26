@@ -29,7 +29,7 @@ import { saveScript } from "../skills/Scripts";
 import { PLAN_FILE } from "../tools/ToolRunner";
 import { ChangeListener } from "../tools/ToolRunner";
 import { describeActions, describeResults, Transcript, TranscriptEvent } from "../transcript/Transcript";
-import { cfg, toRel, workspaceRoot } from "../util";
+import { cfg, resolveInWorkspace, tryToRel, workspaceRoot } from "../util";
 import { ApprovalService } from "./Approvals";
 import { RULES_FILE, TurnEngine } from "./TurnEngine";
 
@@ -463,7 +463,7 @@ export class Controller implements vscode.Disposable {
     const all = this.session.current?.pendingAttachments ?? [];
     const rels = only ? (all.includes(only) ? [only] : []) : all;
     if (!rels.length) return void vscode.window.setStatusBarMessage("Whisper: aktuální prompt nemá žádnou přílohu.", 4000);
-    await this.clipboard.dragFiles(rels.map((r) => vscode.Uri.joinPath(workspaceRoot(), r).fsPath), mouse);
+    await this.clipboard.dragFiles(rels.map((r) => resolveInWorkspace(r).fsPath), mouse);
   }
 
   submitReply(text: string): void {
@@ -750,10 +750,10 @@ export class Controller implements vscode.Disposable {
 
   private activeEditor(): ProjectContext["active"] | undefined {
     const editor = vscode.window.activeTextEditor;
-    const root = workspaceRoot().fsPath;
-    if (!editor || editor.document.uri.scheme !== "file" || !editor.document.uri.fsPath.startsWith(root)) return undefined;
+    const rel = editor ? tryToRel(editor.document.uri) : undefined; // soubor z kterékoli složky workspace
+    if (!editor || !rel) return undefined;
     const sel = editor.selection;
-    const active: ProjectContext["active"] = { path: toRel(editor.document.uri) };
+    const active: ProjectContext["active"] = { path: rel };
     if (!sel.isEmpty) {
       active.selection = editor.document.getText(sel).slice(0, 4000);
       active.selectionRange = `${sel.start.line + 1}-${sel.end.line + 1}`;
@@ -764,8 +764,8 @@ export class Controller implements vscode.Disposable {
   /** Otevře soubor z odkazu v průběhu (cesta:řádek) a odroluje na dané místo. */
   async openFileAt(rel: string, line?: number, col?: number): Promise<void> {
     if (!rel) return;
-    const uri = vscode.Uri.joinPath(workspaceRoot(), rel);
     try {
+      const uri = resolveInWorkspace(rel); // multi-root: cesta začíná názvem složky
       const doc = await vscode.workspace.openTextDocument(uri);
       const editor = await vscode.window.showTextDocument(doc, { preview: true });
       if (line && line > 0) {
@@ -785,7 +785,7 @@ export class Controller implements vscode.Disposable {
       let chars = 0;
       let ageMin: number | undefined;
       try {
-        const st = fs.statSync(vscode.Uri.joinPath(workspaceRoot(), rel).fsPath);
+        const st = fs.statSync(resolveInWorkspace(rel).fsPath);
         chars = st.size;
         // stáří souboru: starý svazek u nového promptu znamená, že se nový nevytvořil
         ageMin = Math.max(0, Math.round((Date.now() - st.mtimeMs) / 60000));

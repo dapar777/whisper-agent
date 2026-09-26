@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import { DragHelper } from "./DragDrop";
 import { isOwnPrompt, looksLikeReply, normalizeClipboard } from "../protocol/replyDetect";
 import { classifyProse } from "../protocol/PromptBuilder";
-import { cfg, readText, workspaceName, workspaceRoot, writeText } from "../util";
+import { cfg, readText, resolveInWorkspace, workspaceName, workspaceRoot, writeText } from "../util";
 import { ClipboardOwner } from "./ClipboardOwner";
 import { FileReplyWatcher } from "./FileReplyWatcher";
 
@@ -122,7 +122,7 @@ export class ClipboardBridge implements vscode.Disposable {
       // prompt jde jako text; přílohy (svazky i obrázky) se táhnou do chatu z klávesnice (dragdrop.py)
       this.lastHistoryItems = [];
       if (!(await this.owner.take(text))) await vscode.env.clipboard.writeText(text);
-      void this.dragFiles(attachments.map((a) => vscode.Uri.joinPath(workspaceRoot(), a).fsPath));
+      void this.dragFiles(attachments.map((a) => resolveInWorkspace(a).fsPath));
       return "text";
     }
     if (delivery === "history" && textual.length && binary.length === 0 && !(threshold > 0 && text.length > threshold)) {
@@ -130,7 +130,7 @@ export class ClipboardBridge implements vscode.Disposable {
       for (const a of textual) {
         try {
           // svazek čteme přímo ze souboru (readText preferuje otevřený editor, což je tu zbytečné)
-          const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(workspaceRoot(), a));
+          const bytes = await vscode.workspace.fs.readFile(resolveInWorkspace(a));
           const content = Buffer.from(bytes).toString("utf8");
           await vscode.env.clipboard.writeText(content);
           // historie schránky si položku uloží až po chvíli; bez pauzy by ji prompt přepsal dřív
@@ -211,7 +211,7 @@ export class ClipboardBridge implements vscode.Disposable {
 
   /** Absolutní cesta přílohy; textový soubor bez přípony .txt se zkopíruje do .txt (chat jiné formáty nebere). */
   private async asTxt(rel: string): Promise<string> {
-    const uri = vscode.Uri.joinPath(workspaceRoot(), rel);
+    const uri = resolveInWorkspace(rel);
     if (/\.(png|jpe?g|gif|webp|txt)$/i.test(rel)) return uri.fsPath;
     try {
       const copy = vscode.Uri.file(uri.fsPath.replace(/\.[^.\\/]+$/, "") + ".txt");

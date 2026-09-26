@@ -256,6 +256,17 @@ holý blok na začátku odpovědi: plán, čtyři `<edit>` (všechny hunky proš
 `<ask>`. Rozhodující byla podle něj připomínka v první osobě v jazyce uživatele a předvedené selhání
 (`<protocol-error>` + `<note>`), ne anglická preambule.
 
+### 3.6b Více složek ve workspace
+
+`protocol/roots.ts` (bez VS Code, testované): u multi-root workspace je každá složka adresář nejvyšší
+úrovně pojmenovaný svým názvem (duplicity dostanou `-2`), `resolveRel` mapuje `složka/cesta` na
+disk a odmítá jak únik `..`, tak holou cestu bez názvu složky (s nápovědou, jak cesty psát), `relOf`
+dělá opačný převod, `splitGlob` rozdělí glob na hledání ve správné složce nebo ve všech. `.whisper/`
+patří vždy první složce. `VsCodeHost.listFiles` hledá po složkách přes `RelativePattern` s vlastním
+`.gitignore` každé z nich, diagnostika i aktivní editor berou soubory z kterékoli složky, prompt
+dostane sekci „Workspace folders“ s pravidlem pro cesty a `cwd`. Git checkpoint zůstává nad první
+složkou.
+
 ### 3.7 Kódování a konce řádků
 
 `tools/encoding.ts` pozná z bajtů kódování souboru (BOM → platnost UTF-8 → jednobajtová stránka podle

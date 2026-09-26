@@ -1,31 +1,42 @@
 import * as path from "path";
 import * as vscode from "vscode";
+import { relOf, resolveRel, RootFolder, uniqueRoots } from "./protocol/roots";
 import { applyEol, decodeBytes, detectEncoding, encodeText, FileEncoding, normalizeEncoding, toLf } from "./tools/encoding";
 
+/** První složka workspace: tam žije stav agenta (.whisper/) a tam běží příkazy bez cwd. */
 export function workspaceRoot(): vscode.Uri {
   const f = vscode.workspace.workspaceFolders?.[0];
   if (!f) throw new Error("Není otevřený žádný workspace.");
   return f.uri;
 }
 
-export function workspaceName(): string {
-  return vscode.workspace.workspaceFolders?.[0]?.name ?? "workspace";
+/** Všechny složky workspace s jedinečnými názvy (multi-root: cesty jimi začínají). */
+export function workspaceFolders(): RootFolder[] {
+  return uniqueRoots((vscode.workspace.workspaceFolders ?? []).map((f) => ({ name: f.name, fsPath: f.uri.fsPath })));
 }
 
-/** Převede relativní cestu na Uri uvnitř workspace; odmítne únik ven. */
+export function isMultiRoot(): boolean {
+  return (vscode.workspace.workspaceFolders?.length ?? 0) > 1;
+}
+
+export function workspaceName(): string {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  if (folders.length > 1) return vscode.workspace.name ?? folders.map((f) => f.name).join(" + ");
+  return folders[0]?.name ?? "workspace";
+}
+
+/** Převede relativní cestu na Uri uvnitř workspace (multi-root: `složka/cesta`); odmítne únik ven. */
 export function resolveInWorkspace(rel: string): vscode.Uri {
-  const root = workspaceRoot();
-  const clean = rel.replace(/\\/g, "/").replace(/^\.\//, "");
-  const abs = path.resolve(root.fsPath, clean);
-  const relBack = path.relative(root.fsPath, abs);
-  if (relBack.startsWith("..") || path.isAbsolute(relBack)) {
-    throw new Error(`Cesta "${rel}" leží mimo workspace.`);
-  }
-  return vscode.Uri.file(abs);
+  return vscode.Uri.file(resolveRel(rel, workspaceFolders()).fsPath);
+}
+
+/** Relativní cesta ve workspace; u souboru mimo workspace vrátí undefined. */
+export function tryToRel(uri: vscode.Uri): string | undefined {
+  return uri.scheme === "file" ? relOf(uri.fsPath, workspaceFolders()) : undefined;
 }
 
 export function toRel(uri: vscode.Uri): string {
-  return path.relative(workspaceRoot().fsPath, uri.fsPath).replace(/\\/g, "/");
+  return tryToRel(uri) ?? path.relative(workspaceRoot().fsPath, uri.fsPath).replace(/\\/g, "/");
 }
 
 export function cfg<T>(key: string, fallback: T): T {
