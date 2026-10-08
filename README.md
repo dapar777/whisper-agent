@@ -196,11 +196,13 @@ a svazek se přiloží jako soubor, místo aby tiše zmizel.
 každou odpověď přiložil jako soubor `whisper-reply-N.xml` (N = číslo kola), jehož obsahem je blok
 `<whisper>`; těla akcí smí v souboru zabalit do `<![CDATA[ … ]]>`, agent je rozbalí, a v chatu má napsat
 jen pár slov. Osvědčilo se to víc než kopírování textu z chatu: model soubor drží pohromadě a nic z něj
-neztratí. Stažený soubor se převezme ze sledované složky (`whisper.reply.watchDir`, prázdné = složka
-stahování uživatele): sledují se jen soubory vzniklé po odeslání promptu, název musí vyhovovat
-`whisper.reply.filePattern` (výchozí `*.{xml,md,txt}`), soubor se přečte, až se přestane měnit
-(stahování po částech), a ověří stejně jako text ze schránky; soubory bez bloku `<whisper turn=…>` se
-ignorují (vidět v logu). Zkopírovaná odpověď z chatu (Ctrl+C) se bere dál jako záloha. Režim
+neztratí. Stažený soubor se převezme ze sledovaných složek: `whisper.reply.watchDir` (víc jich oddělí středník)
+a v režimu souboru vždy i skutečná složka stahování podle Windows a `~/Downloads`. Sledují se soubory
+vzniklé po odeslání promptu **i soubory přepsané** (stejné jméno, nový obsah, třeba po „Uložit jako“),
+název musí vyhovovat `whisper.reply.filePattern` (výchozí `*.{xml,md,txt}`), soubor se přečte, až se
+přestane měnit (stahování po částech), zamčený soubor se zkouší znovu, a obsah se ověří stejně jako text
+ze schránky; soubory bez bloku `<whisper turn=…>` se ignorují. Log v panelu říká, které složky se hlídají
+a co se s každým souborem stalo. Zkopírovaná odpověď z chatu (Ctrl+C) se bere dál jako záloha. Režim
 `clipboard` model o soubor nežádá a odpověď se kopíruje z chatu; složka se pak sleduje jen, když je
 `whisper.reply.watchDir` nastavená.
 

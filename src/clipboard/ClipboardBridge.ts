@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+import { execFile, execFileSync } from "child_process";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -8,6 +8,30 @@ import { classifyProse } from "../protocol/PromptBuilder";
 import { cfg, readText, resolveInWorkspace, workspaceName, workspaceRoot, writeText } from "../util";
 import { ClipboardOwner } from "./ClipboardOwner";
 import { FileReplyWatcher } from "./FileReplyWatcher";
+
+let knownDownloadsCache: string | undefined;
+
+/**
+ * Skutečná složka stahování podle Windows (známá složka Downloads může být přesměrovaná třeba na
+ * OneDrive nebo jiný disk); zjišťuje se jednou přes registr, při neúspěchu prázdný řetězec.
+ */
+function knownDownloadsDir(): string {
+  if (knownDownloadsCache !== undefined) return knownDownloadsCache;
+  knownDownloadsCache = "";
+  if (process.platform !== "win32") return knownDownloadsCache;
+  try {
+    const out = execFileSync(
+      "reg",
+      ["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders", "/v", "{374DE290-123F-4565-9164-39C4925E467B}"],
+      { windowsHide: true, encoding: "utf8", timeout: 5000 },
+    );
+    const m = /REG_(?:EXPAND_)?SZ\s+(.+?)\s*$/m.exec(out);
+    if (m) knownDownloadsCache = m[1].replace(/%([^%]+)%/g, (_, v: string) => process.env[v] ?? "");
+  } catch {
+    /* bez registru zůstane ~/Downloads */
+  }
+  return knownDownloadsCache;
+}
 
 /** Windows: vloží do schránky soubory (file drop list); prohlížeč je po Ctrl+V připojí jako přílohy. */
 function setClipboardFiles(fsPaths: string[]): Promise<void> {
@@ -273,20 +297,37 @@ export class ClipboardBridge implements vscode.Disposable {
    * složka stahování uživatele; prázdný řetězec = soubory se nesledují.
    */
   replyDir(): string {
-    const dir = cfg<string>("reply.watchDir", "").trim();
-    if (dir) return dir;
-    if (cfg<string>("reply.mode", "file") !== "file") return "";
-    return path.join(os.homedir(), "Downloads");
+    return this.replyDirs().join("; ");
+  }
+
+  /**
+   * Všechny sledované složky: ty z `whisper.reply.watchDir` (víc jich oddělí středník) a v režimu
+   * souboru vždy i skutečná složka stahování (podle Windows, ne jen ~/Downloads, uživatel ji může mít
+   * přesměrovanou) a ~/Downloads jako záloha. Duplicity se sloučí.
+   */
+  replyDirs(): string[] {
+    const out: string[] = [];
+    const add = (d: string | undefined) => {
+      const t = (d ?? "").trim().replace(/[\\/]+$/, "");
+      if (t && !out.some((x) => x.toLowerCase() === t.toLowerCase())) out.push(t);
+    };
+    for (const d of cfg<string>("reply.watchDir", "").split(";")) add(d);
+    if (cfg<string>("reply.mode", "file") === "file") {
+      add(knownDownloadsDir());
+      add(path.join(os.homedir(), "Downloads"));
+    }
+    return out;
   }
 
   /** Odpověď může přijít i jako nový soubor ve složce `whisper.reply.watchDir` (např. stažený z chatu). */
   private startFileWatch(): void {
     this.fileWatcher?.stop();
     this.fileWatcher = undefined;
-    const dir = this.replyDir();
-    if (!dir) return;
+    const dirs = this.replyDirs();
+    if (!dirs.length) return;
     this.fileWatcher = new FileReplyWatcher({
-      dir,
+      dir: dirs[0],
+      dirs,
       pattern: cfg<string>("reply.filePattern", "*.{xml,md,txt}"),
       pollMs: Math.max(500, cfg<number>("clipboard.pollMs", 500)),
       lastPrompt: this.lastPrompt,

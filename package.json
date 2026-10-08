@@ -127,7 +127,7 @@
         },
         "whisper.reply.watchDir": {
           "type": "string", "default": "",
-          "description": "Složka, ve které se čeká na odpověď modelu jako NOVÝ soubor. Prázdné = složka stahování uživatele (Downloads) v režimu souboru, jinak jen schránka. Soubor se převezme, až se přestane měnit, a ověří stejně jako text ze schránky."
+          "description": "Složky, ve kterých se čeká na odpověď modelu jako nový nebo přepsaný soubor; víc složek oddělte středníkem. V režimu souboru se navíc vždy hlídá skutečná složka stahování podle Windows a ~/Downloads. Soubor se převezme, až se přestane měnit, a ověří stejně jako text ze schránky."
         },
         "whisper.reply.filePattern": {
           "type": "string", "default": "*.{xml,md,txt}",
